@@ -14,9 +14,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:sim": "vitest run src/sim",
-    "test:watch": "vitest",
+    "test": "node scripts/vitest.mjs run",
+    "test:sim": "node scripts/vitest.mjs run src/sim",
+    "test:watch": "node scripts/vitest.mjs",
     "check:assets": "node scripts/check-assets.mjs",
     "smoke": "node scripts/smoke.mjs"
   },

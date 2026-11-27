@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Run simulation tests after editing game rules",
+      "trigger": "PostFileSave",
+      "description": "When a file in src/sim/ is saved, asks the agent to run the simulation's property tests and act on any failure.",
+      "matcher": "src[\\\\/]sim[\\\\/].*\\.ts$",
+      "action": {
+        "type": "agent",
+        "prompt": "A game-rules file in src/sim/ was just saved. Run `npm run test:sim`. If a property test fails, read fast-check's shrunk counterexample, decide whether the code, the property or the requirement in .kiro/specs is wrong, fix it, keep the counterexample as an example test, and add a row to Documents/kiro-usage-log.md. If every test passes, say so in one line and carry on."
+      }
+    }
+  ]
+}

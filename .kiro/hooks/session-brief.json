@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Session brief",
+      "trigger": "SessionStart",
+      "description": "At the start of every session, prints the time left before the Kiroween deadline, the next feature in the build plan and the last commit.",
+      "action": {
+        "type": "command",
+        "command": "node scripts/hooks/session-brief.mjs",
+        "timeout": 20
+      }
+    }
+  ]
+}

@@ -1,71 +1,71 @@
 # Implementation Plan
 
-- [ ] 1. Set up the project
+- [x] 1. Set up the project
   - `package.json`, `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`, `index.html`, `netlify.toml`
   - _Requirements: 9.2_
 
-- [ ] 2. Build the simulation core
-  - [ ] 2.1 Add `balance.ts` and `math.ts`
+- [x] 2. Build the simulation core
+  - [x] 2.1 Add `balance.ts` and `math.ts`
     - _Requirements: 1.3, 1.4, 2.4, 5.3_
-  - [ ] 2.2 Add `rng.ts` (`createRng`, `hashSeed`, `mixSeed`)
+  - [x] 2.2 Add `rng.ts` (`createRng`, `hashSeed`, `mixSeed`)
     - _Requirements: 3.2, 5.1_
-  - [ ]* 2.3 Property test for the random number generator
+  - [x]* 2.3 Property test for the random number generator
     - **Property 11: The random number generator is reproducible and in range**
     - **Validates: Requirements 3.2, 5.1**
-  - [ ] 2.4 Add `ship.ts` (`createShip`, `sanitizeInput`, `stepShip`)
+  - [x] 2.4 Add `ship.ts` (`createShip`, `sanitizeInput`, `stepShip`)
     - _Requirements: 1.3, 1.4, 1.5, 1.6, 2.2, 2.3, 2.4, 2.5, 5.2, 5.3_
-  - [ ]* 2.5 Property tests for the ship step
+  - [x]* 2.5 Property tests for the ship step
     - **Property 1: The ship's state stays valid**
     - **Property 2: Sails, rudder and speed change at limited rates**
     - **Property 3: Furled sails stop the ship**
     - **Property 4: The rudder turns the ship the right way**
     - **Property 5: The ship moves along its heading**
     - **Validates: Requirements 1.3 to 1.6, 2.2 to 2.5, 5.2, 5.3**
-  - [ ] 2.6 Add `world.ts` (`generateWorld`, `createWorldState`, `stepWorld`, `resolveCollisions`)
+  - [x] 2.6 Add `world.ts` (`generateWorld`, `createWorldState`, `stepWorld`, `resolveCollisions`)
     - _Requirements: 3.1 to 3.6, 4.1 to 4.3_
-  - [ ]* 2.7 Property tests for the world
+  - [x]* 2.7 Property tests for the world
     - **Property 6: Islands and the world's edge are solid**
     - **Property 7: No teleporting**
     - **Property 8: Same inputs, same result**
     - **Property 9: The archipelago is well formed**
     - **Property 10: The archipelago is reproducible**
     - **Validates: Requirements 3.1 to 3.6, 4.1 to 4.3, 5.1**
-  - [ ] 2.8 Purity check for `src/sim/`
+  - [x] 2.8 Purity check for `src/sim/`
     - **Property 12: The simulation is pure**
     - **Validates: Requirement 5.4**
 
-- [ ] 3. Connect the game loop
-  - [ ] 3.1 Add `loop.ts`, `input.ts` and `interpolate.ts`
+- [x] 3. Connect the game loop
+  - [x] 3.1 Add `loop.ts`, `input.ts` and `interpolate.ts`
     - _Requirements: 1.1, 1.2, 2.1, 6.5_
-  - [ ]* 3.2 Property test for heading interpolation
+  - [x]* 3.2 Property test for heading interpolation
     - **Property 14: Heading interpolation takes the short way round**
     - **Validates: Requirement 6.5**
 
-- [ ] 4. Draw the night sea
-  - [ ] 4.1 Palette, renderer setup, fog, lights, sky dome with moon, stars
+- [x] 4. Draw the night sea
+  - [x] 4.1 Palette, renderer setup, fog, lights, sky dome with moon, stars
     - _Requirements: 6.1_
-  - [ ] 4.2 `waves.ts` and the faceted ocean shader
+  - [x] 4.2 `waves.ts` and the faceted ocean shader
     - _Requirements: 6.1, 6.2_
-  - [ ]* 4.3 Property test for wave heights
+  - [x]* 4.3 Property test for wave heights
     - **Property 13: Wave heights are bounded**
     - **Validates: Requirement 6.2**
-  - [ ] 4.4 Island terrain, instanced props, Last Light's lighthouse and dock
+  - [x] 4.4 Island terrain, instanced props, Last Light's lighthouse and dock
     - _Requirements: 6.1, 6.3_
-  - [ ] 4.5 Ship mesh with sails, lantern and two crew, floating on the waves
+  - [x] 4.5 Ship mesh with sails, lantern and two crew, floating on the waves
     - _Requirements: 6.2, 6.3_
-  - [ ] 4.6 Lantern glows, ghost wisps and the foam wake
+  - [x] 4.6 Lantern glows, ghost wisps and the foam wake
     - _Requirements: 6.3, 6.4_
-  - [ ] 4.7 Camera rig: intro orbit, chase, mouse orbit, zoom
+  - [x] 4.7 Camera rig: intro orbit, chase, mouse orbit, zoom
     - _Requirements: 7.1, 7.2, 7.3_
 
-- [ ] 5. Build the HUD and the first minute
-  - [ ] 5.1 Intro screen, HUD, island labels, aground notice
+- [x] 5. Build the HUD and the first minute
+  - [x] 5.1 Intro screen, HUD, island labels, aground notice
     - _Requirements: 8.1 to 8.5_
-  - [ ] 5.2 WebGL 2 check, context-lost message, High/Low graphics, slow-frame-rate hint
+  - [x] 5.2 WebGL 2 check, context-lost message, High/Low graphics, slow-frame-rate hint
     - _Requirements: 8.6, 8.7, 9.2, 9.3_
 
-- [ ] 6. Check it in a real browser
-  - [ ] 6.1 Debug API on `window.__ghostlight`
+- [x] 6. Check it in a real browser
+  - [x] 6.1 Debug API on `window.__ghostlight`
     - _Requirements: 9.4_
-  - [ ] 6.2 Smoke test with screenshots and budget checks; asset credit check
+  - [x] 6.2 Smoke test with screenshots and budget checks; asset credit check
     - _Requirements: 9.1_

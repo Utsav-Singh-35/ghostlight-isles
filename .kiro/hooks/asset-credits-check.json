@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Credit check for new assets",
+      "trigger": "PostFileCreate",
+      "description": "When a model, sound, texture or font is added under public/, asks the agent to run the asset credit check and fix the credits.",
+      "matcher": "public[\\\\/](models|audio|textures|fonts)[\\\\/]",
+      "action": {
+        "type": "agent",
+        "prompt": "A new asset was added under public/. Run `npm run check:assets`. If it fails, add the asset's author, source URL and license to the table in Documents/credits.md, or remove the asset if its license is not CC0, CC-BY, OFL or MIT. Models must also stay under 300 KB."
+      }
+    }
+  ]
+}

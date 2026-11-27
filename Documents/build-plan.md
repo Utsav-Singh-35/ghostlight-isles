@@ -5,7 +5,7 @@ Deadline: **Fri Dec 4, 2:00 PM PT = Sat Dec 5, 3:30 AM IST.** Our target is to s
 ## Features, in build order
 Each feature gets its own spec in `.kiro/specs/`, passes its tests and the smoke test, and then gets one commit. Tick a box when the feature is committed.
 
-- [ ] **F1 Sailing** (spec `sailing`): 3D night sea, sky, fog, islands, a ship with two crew, sailing and steering, chase camera, HUD, intro screen, Low/High graphics. Fri Nov 27.
+- [x] **F1 Sailing** (spec `sailing`): 3D night sea, sky, fog, islands, a ship with two crew, sailing and steering, chase camera, HUD, intro screen, Low/High graphics. Fri Nov 27.
 - [ ] **F2 Combat core** (spec `combat`): deterministic battle simulation (cannons, towers, damage, sinking) with property tests, and the 3D battle view. Sat Nov 28.
 - [ ] **F3 Capturing islands** (spec `island-capture`): fort battles and the Lantern Lines puzzle. Sun Nov 29.
 - [ ] **F4 Accounts and saving** (spec `persistence`): guest login and saved progress with Supabase. Sun Nov 29.

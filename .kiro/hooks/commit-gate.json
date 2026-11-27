@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Commit gate",
+      "trigger": "PreToolUse",
+      "description": "Before any shell command that runs git commit, runs the tests, the type check and the asset credit check, and blocks the commit if any fail.",
+      "matcher": "[Ss]hell|[Bb]ash|pwsh|[Cc]ommand|execute",
+      "action": {
+        "type": "command",
+        "command": "node scripts/hooks/commit-gate.mjs",
+        "timeout": 300
+      }
+    }
+  ]
+}
