@@ -32,3 +32,10 @@
     - _Requirements: 6.3, 6.4_
   - [x] 3.3 Smoke test: a practice battle runs, fires and ends
     - _Requirements: 6.1 to 6.4_
+
+- [x] 4. A haunted fort's own ghosts
+  - [x] 4.1 Island ghosts in assaults: spawn on the ring, patrol, hunt the attacker within `GHOSTS.guardReach`, fire only at the player; the player's weapons hit them
+    - _Requirements: 3.5, 3.6_
+  - [x]* 4.2 Property test
+    - **Property 10: The island's ghosts fight for it**
+    - **Validates: Requirements 3.5, 3.6, 4.1**

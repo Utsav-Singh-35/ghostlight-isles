@@ -30,7 +30,7 @@ export type BattleKind = 'capture' | 'raid' | 'ghost';
 /** A battle or puzzle the server has handed out and is waiting to see finished. */
 export interface PendingBattle {
   readonly id: string;
-  readonly kind: BattleKind | 'puzzle' | 'locker';
+  readonly kind: BattleKind | 'locker';
   /** Battle setup, or null for puzzles. */
   readonly setup: BattleSetup | null;
   /** Puzzle seed, for puzzles. */

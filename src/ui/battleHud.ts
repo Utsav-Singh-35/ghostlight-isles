@@ -116,7 +116,10 @@ export class BattleHud {
     const { loadout } = state.setup;
     const assault = state.setup.mode === 'assault';
     const left = Math.ceil(timeLeft(state));
-    setText(this.clock, `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} until dawn`);
+    const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    const urgent = left <= 30 && !state.result;
+    setText(this.clock, assault ? `${clock} until dawn${urgent ? ': the fort must fall before the sun rises' : ''}` : `${clock} until dawn`);
+    this.clock.classList.toggle('bh-clock-urgent', urgent);
 
     const p = state.player;
     this.hullFill.style.transform = `scaleX(${(p.hp / p.maxHp).toFixed(3)})`;
@@ -147,11 +150,14 @@ export class BattleHud {
 
     // Tips that explain the two threats as they come up.
     let tip = '';
+    const afloat = state.ghosts.filter((g) => !g.sunk);
+    const veiled = afloat.some((g) => !isRevealed(state, g));
+    const seen = afloat.some((g) => isRevealed(state, g));
     if (p.sunk) tip = 'Your ship sank. The towers fight on without you.';
-    else if (!assault && state.ghosts.some((g) => !g.sunk && !isRevealed(state, g)))
-      tip = `Faint ghosts hide in the fog, where your guns can't aim at them. Sail within ${revealRadius(loadout)} m to light them with your lantern; Spirit Lanterns and the Bat Swarm reveal them too.`;
-    else if (!assault && !saltLoaded && loadout.salt) tip = 'Ghosts shrug off cannonballs. Press R for Salt Shot.';
-    else if (assault && saltLoaded) tip = 'Salt Shot is weak against towers. Press R for cannonballs.';
+    else if (veiled)
+      tip = `${assault ? "The fort's ghosts" : 'Faint ghosts'} hide in the fog, where your guns can't aim at them. Sail within ${revealRadius(loadout)} m to light them with your lantern; Spirit Lanterns and the Bat Swarm reveal them too.`;
+    else if (seen && !saltLoaded && loadout.salt) tip = 'Ghosts take half damage from cannonballs. Press R for Salt Shot.';
+    else if (assault && saltLoaded && !seen) tip = 'Salt Shot is weak against towers. Press R for cannonballs.';
     setText(this.tip, tip);
     this.tip.hidden = tip === '';
 

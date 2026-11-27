@@ -12,7 +12,7 @@ export const ORDERS: readonly Order[] = [
   { id: 'sail', text: 'Press W to raise the sails. Press it again for full sail.' },
   { id: 'steer', text: 'Steer with A and D.' },
   { id: 'island', text: 'Sail to a haunted island. Their names glow green.' },
-  { id: 'capture', text: 'Take the island: press 1 to attack its fort, or 2 to solve its Lantern Lines.' },
+  { id: 'capture', text: 'Take the island: press 1, then sail around its fort firing Q and E until the ghost light falls.' },
   { id: 'build', text: 'Press Tab and build a defense on Last Light, your home.' },
   { id: 'moon', text: 'Press "Summon the Blood Moon" and hold Last Light against the ghost fleet.' },
   { id: 'raid', text: "Press R and raid a rival captain's island." },

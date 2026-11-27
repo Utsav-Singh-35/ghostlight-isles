@@ -31,7 +31,7 @@ Structures stand on a ring of slots at 60% of the island's radius; mines float o
 2. The player's ship and every ghost ship step with `stepShip` (ghosts use their own speed table, halved while slowed) and `resolveCollisions` against the arena.
 3. Player weapons fire if held and ready. Broadsides auto-aim at the nearest hostile target in range and inside a 55° arc either side of the beam, leading moving ships. The keep counts as in range from `BATTLE.keepReach` further out, because it stands at the heart of the island.
 4. Each standing defense with a target in range fires. Cannon Towers and Spirit Lanterns lead moving ships; catapults do not.
-5. Ghost ships fire at the nearest structure or player ship in range.
+5. Ghost ships fire at the nearest structure or player ship in range. In an assault the ghosts belong to the island: they start on the ring around it, patrol it while the player is far, steer for the player once it comes within `GHOSTS.guardReach` of the ring (circling it at `GHOSTS.huntDistance`), and fire only at the player's ship. The player's weapons can hit them; the island's towers and mines never can.
 6. Shots land when their flight time ends. A single-target shot hits the nearest hostile entity whose hit circle contains the landing point; an area shot hits every hostile entity in its radius. Damage = base damage × the multiplier for the shot type against the target class.
 7. Burning zones damage hostile entities inside them every tick.
 8. Hostile ships inside a mine's trigger radius set it off.
@@ -75,6 +75,9 @@ Structures stand on a ring of slots at 60% of the island's radius; mines float o
 
 **Property 9: Every keep is within reach.** *For any* island radius the world can generate, haunted or home, a ship sailing up to 16 m off the shore can reach the keep at the centre with its broadside, a ship at the shore can reach every tower slot, and ghosts circling Last Light can reach its keep. (Added after the scripted fort attack showed keeps out of range. Widened in the balance pass, when the autopilot sank every tower on Bonefire Isle but could not reach its keep: broadsides now reach the keep `BATTLE.keepReach` further than other targets.)
 **Validates: Requirements 1.1, 3.2, 4.3**
+
+**Property 10: The island's ghosts fight for it.** *For any* assault with ghost ships and any inputs, every shot fired by a ghost or a tower that hits something hits the player's ship, and the battle ends only when the fort falls, the ship sinks or dawn comes.
+**Validates: Requirements 3.5, 3.6, 4.1**
 
 ## Testing strategy
 fast-check generates setups (modes, island sizes, random defense layouts and loadouts, fleet sizes) and input streams. Battles are capped at the time limit, so each run is bounded. Example tests cover a broadside sinking a lone tower and a siege where towers alone repel a small fleet.

@@ -6,7 +6,7 @@ Draft for the Devpost "How I used Kiro" field. Facts come from `Documents/kiro-u
 
 I built Ghostlight Isles solo for Kiroween 2026: a 3D pirate base-building game in the browser with asynchronous raids, a ghost fleet and a server that replays every battle. I brought the idea and made the calls (3D over 2D, Netlify Blobs over Supabase, asynchronous raids over live multiplayer). Kiro's agent wrote the specs, the code, the tests and the tooling, and checked its own work in a real browser.
 
-The repo shows the result: 10 specs with 61 numbered correctness properties, 97 unit and property tests, a 55-check browser smoke test, and one commit per working feature.
+The repo shows the result: 10 specs with 64 numbered correctness properties, 106 unit and property tests, a 56-check browser smoke test, and one commit per working feature.
 
 ## Kiro surfaces
 

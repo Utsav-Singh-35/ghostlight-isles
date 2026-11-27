@@ -187,10 +187,10 @@ export class GameRenderer {
     this.scale = pointScale(this.rig.camera, height * this.pixelRatio);
   }
 
-  /** Switches the scene to a battle: the open sea's islands hide and the battle island appears. */
-  enterBattle(state: BattleState): void {
+  /** Switches the scene to a battle: the open sea's islands hide and the battle island appears. `fortLevel` draws a haunted fort's walls. */
+  enterBattle(state: BattleState, fortLevel = 0): void {
     this.exitBattle();
-    this.battle = new BattleLayer(state, this.quality);
+    this.battle = new BattleLayer(state, this.quality, fortLevel);
     this.scene.add(this.battle.group);
     this.islands.group.visible = false;
     this.wisps.points.visible = false;

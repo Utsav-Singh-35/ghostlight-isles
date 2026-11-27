@@ -26,7 +26,8 @@ I love base-building strategy games and pirate stories, but most of them need an
 You start with one small ship, two crew and one lit island, Last Light. Every other island is haunted.
 
 - **Sail** a foggy night sea in 3D. Island labels say in words whether an island is yours or haunted, and how far away it is.
-- **Capture islands** by sinking a fort's towers from your ship, or by turning mirrors in the Lantern Lines puzzle until the lighthouse beam lights every spirit totem. Captured islands pay gold every minute.
+- **Capture islands** by breaking their forts from your ship before dawn. Captured islands pay gold every minute.
+- **Forts get harder the further you sail.** Five fort levels: harder islands are bigger, with taller walls, more and stronger towers, mines, a bigger keep, a longer dawn clock and ghost ships that rise from the island to hunt you. A new ship takes the first forts; the last ones need a fully refitted ship.
 - **Build your base** on Last Light: Cannon Towers, Spirit Lanterns, Bone Catapults and Jack-o'-lantern Mines, three levels each. Refit your ship with a stronger hull, more cannons, Salt Shot, Witchfire barrels and a Bat Swarm.
 - **Raid other captains** while they're away. You fight a saved copy of their island, and the server replays the battle from its seed and your inputs before paying any loot. Raided islands get 4 hours of protection and a report. Ten rival captains keep the sea busy from the first minute, and a leaderboard ranks everyone by infamy.
 - **Survive the Blood Moon.** Every 20 minutes the moon turns red for every player at once and a ghost fleet sails for your island. Ghosts take half damage from cannonballs; Salt Shot and Spirit Lanterns hit them at full strength. A base built only against players falls to ghosts.
@@ -48,7 +49,7 @@ A **Captain's orders** card walks new players through all of it, ticking each st
 - **TypeScript, Three.js and Vite**, with no game engine. Every model, texture and sound is made in code, so the whole game is about 200 KB gzipped and needs no asset downloads.
 - **A deterministic simulation:** pure functions at 30 ticks per second with seeded randomness, so a battle is fully decided by its seed, the defender's layout and the attacker's inputs. The renderer and the sound only read it.
 - **One server in three places:** the game's server rules use only web standards, so the same code runs as a Netlify Function with Netlify Blobs, inside Vite's dev server, and in the browser when offline.
-- **Kiro, spec first:** 10 specs written before their code, 61 numbered correctness properties, each one a fast-check property test, hooks that run tests on every rules change and block bad commits, and steering that holds the architecture rules, the performance budget and the game's numbers. More in the "How I used Kiro" section.
+- **Kiro, spec first:** 10 specs written before their code, 64 numbered correctness properties, each one a fast-check property test, hooks that run tests on every rules change and block bad commits, and steering that holds the architecture rules, the performance budget and the game's numbers. More in the "How I used Kiro" section.
 
 ## Challenges I ran into
 

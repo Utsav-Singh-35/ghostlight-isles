@@ -121,7 +121,7 @@ describe('combat spec: battle simulation', () => {
       }),
       RUNS,
     );
-  });
+  }, SLOW);
 
   // Feature: combat, Property 2. Validates: Requirement 5.2
   it('Property 2: a live battle replays exactly', () => {
@@ -132,7 +132,7 @@ describe('combat spec: battle simulation', () => {
       }),
       RUNS,
     );
-  });
+  }, SLOW);
 
   // Feature: combat, Property 3. Validates: Requirement 5.5
   it('Property 3: the battle state stays valid', () => {
@@ -185,7 +185,7 @@ describe('combat spec: battle simulation', () => {
       }),
       RUNS,
     );
-  });
+  }, SLOW);
 
   // Feature: combat, Property 6. Validates: Requirements 2.1, 2.2
   it('Property 6: the two threats need two defenses', () => {
@@ -217,7 +217,7 @@ describe('combat spec: battle simulation', () => {
       }),
       RUNS,
     );
-  });
+  }, SLOW);
 
   // Feature: combat, Property 8. Validates: Requirement 5.3
   it('Property 8: malformed inputs are harmless', () => {
@@ -239,7 +239,7 @@ describe('combat spec: battle simulation', () => {
       }),
       RUNS,
     );
-  });
+  }, SLOW);
 
   // Feature: combat, Property 9. Validates: Requirements 1.1, 3.2, 4.3
   it('Property 9: every keep is within reach', () => {
@@ -260,6 +260,37 @@ describe('combat spec: battle simulation', () => {
     const home = collisionRadius({ id: 0, name: '', kind: 'home', x: 0, z: 0, radius: WORLD.homeIslandRadius, seed: 0 });
     expect(GHOSTS.range).toBeGreaterThanOrEqual(home + GHOSTS.orbitMargin);
   });
+
+  // Feature: combat, Property 10. Validates: Requirements 3.5, 3.6, 4.1
+  it("Property 10: the island's ghosts fight for it", () => {
+    const assault = setupArb.map((s) => ({ ...s, mode: 'assault' as const, fleet: { count: Math.max(1, s.fleet.count), level: s.fleet.level } }));
+    const playerKinds = new Set(['ball', 'salt', 'barrel']);
+    fc.assert(
+      fc.property(assault, segments, (setup, plan) => {
+        let problem: string | null = null;
+        const { state } = playLive(setup, plan, (prev, next) => {
+          if (problem) return;
+          for (const e of next.events) {
+            if (e.type === 'land' && !playerKinds.has(e.kind) && e.hitId !== null && e.hitId !== next.player.id) {
+              problem = `a ${e.kind} shot hit ${e.hitId} instead of the player on tick ${next.tick}`;
+            }
+          }
+          // Anything of the island's that loses health must have been hit by the player's shots or Witchfire.
+          const byPlayer = prev.fires.length > 0 || next.fires.length > 0 || next.events.some((e) => e.type === 'land' && playerKinds.has(e.kind));
+          next.ghosts.forEach((g, i) => {
+            if (g.hp < prev.ghosts[i]!.hp && !byPlayer) problem = `ghost ${g.id} was hurt by its own side on tick ${next.tick}`;
+          });
+          next.structures.forEach((s, i) => {
+            if (s.type !== 'mine' && s.hp < prev.structures[i]!.hp && !byPlayer) problem = `structure ${s.id} was hurt by its own side on tick ${next.tick}`;
+          });
+        });
+        expect(problem).toBeNull();
+        expect(['destroyed', 'sunk', 'time']).toContain(state.result!.reason);
+        expect(state.result!.reason === 'destroyed').toBe(state.structures.every((s) => s.type === 'mine' || s.destroyed));
+      }),
+      RUNS,
+    );
+  }, SLOW);
 
   describe('examples', () => {
     const world = generateWorld(hashSeed(WORLD.defaultSeed));

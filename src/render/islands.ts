@@ -1,6 +1,9 @@
 import * as THREE from 'three';
+import { FORTS } from '../sim/balance';
+import { fortDifficulty } from '../sim/layout';
 import { createRng, type Rng } from '../sim/rng';
 import type { Island, World } from '../sim/world';
+import { addFort, blockedByFort, ghostSpireGeometry, keepScale } from './fortMeshes';
 import { MeshBuilder, placed, vertexColorMaterial, type Vec3 } from './meshBuilder';
 import { PALETTE } from './palette';
 
@@ -157,7 +160,7 @@ function palmGeometry(): THREE.BufferGeometry {
   return b.build();
 }
 
-function deadTreeGeometry(): THREE.BufferGeometry {
+export function deadTreeGeometry(): THREE.BufferGeometry {
   const b = new MeshBuilder();
   b.add(new THREE.CylinderGeometry(0.1, 0.3, 3.4, 5).translate(0, 1.7, 0), PALETTE.deadWood, placed([0, 0, 0], [0, 0, 0.08]));
   const branches: Array<[number, number, number, number]> = [
@@ -173,7 +176,7 @@ function deadTreeGeometry(): THREE.BufferGeometry {
   return b.build();
 }
 
-function rockGeometry(): THREE.BufferGeometry {
+export function rockGeometry(): THREE.BufferGeometry {
   const source = new THREE.IcosahedronGeometry(1, 0);
   const position = source.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < position.count; i++) {
@@ -188,7 +191,7 @@ function rockGeometry(): THREE.BufferGeometry {
   return new MeshBuilder().add(source, PALETTE.stone).build();
 }
 
-function tombstoneGeometry(): THREE.BufferGeometry {
+export function tombstoneGeometry(): THREE.BufferGeometry {
   const b = new MeshBuilder();
   b.add(new THREE.BoxGeometry(0.75, 0.95, 0.2).translate(0, 0.475, 0), PALETTE.tombstone);
   b.add(
@@ -288,6 +291,9 @@ export function createIslands(world: World): IslandScene {
   const down = new THREE.Vector3(0, -1, 0);
   const origin = new THREE.Vector3();
   const terrains = new Map<number, THREE.Mesh>();
+  /** Every haunted fort and its spire, merged into one mesh. */
+  const forts = new MeshBuilder();
+  const spire = ghostSpireGeometry();
 
   for (const island of world.islands) {
     const rng = createRng(island.seed);
@@ -300,7 +306,8 @@ export function createIslands(world: World): IslandScene {
     group.add(terrain);
     terrains.set(island.id, terrain);
     disposables.push(geometry);
-    labelAnchors[island.id] = new THREE.Vector3(island.x, peak + (home ? 16 : 7), island.z);
+    // Labels float above the lighthouse or the fort's ghost spire.
+    labelAnchors[island.id] = new THREE.Vector3(island.x, peak + (home ? 16 : 15), island.z);
 
     /** Terrain height under a point given in polar form around the island's centre. */
     const ground = (angle: number, fraction: number): Vec3 | null => {
@@ -311,9 +318,19 @@ export function createIslands(world: World): IslandScene {
       const hit = raycaster.intersectObject(terrain, false)[0];
       return hit ? [x, hit.point.y, z] : null;
     };
+    /** Terrain height under a point given relative to the island's centre. */
+    const heightAt = (x: number, z: number): number => {
+      origin.set(island.x + x, 200, island.z + z);
+      raycaster.set(origin, down);
+      const hit = raycaster.intersectObject(terrain, false)[0];
+      return hit ? hit.point.y : 0.5;
+    };
     const scatter = (count: number, min: number, max: number, into: Placement[], scale: () => number, tilt = 0) => {
       for (let i = 0; i < count; i++) {
-        const at = ground(rng.range(0, Math.PI * 2), rng.range(min, max));
+        const angle = rng.range(0, Math.PI * 2);
+        const fraction = rng.range(min, max);
+        // Nothing grows through a haunted fort's walls.
+        const at = !home && blockedByFort(fraction * island.radius, island.radius) ? null : ground(angle, fraction);
         if (!at) continue;
         into.push({
           position: [at[0], at[1] - 0.05, at[2]],
@@ -376,10 +393,23 @@ export function createIslands(world: World): IslandScene {
       addPost(-Math.PI * 0.6, 0.72, 'lantern');
     } else {
       scatter(rng.int(3, 7), 0.25, 0.75, deadTrees, () => rng.range(0.8, 1.4), 0.12);
-      // A small graveyard on one side of the island.
+      // The fort: curtain walls around a ghost spire, bigger and taller the harder the fort.
+      const level = fortDifficulty(island);
+      const flames = addFort(forts, island.radius, level, island.seed, heightAt, island);
+      const s = keepScale(FORTS.keepLevel[level - 1]!);
+      forts.addColored(spire.body, placed([island.x, peak - 0.6, island.z], [0, 0, 0], s));
+      const lampY = peak - 0.6 + spire.lanternHeight * s;
+      glass.push({ position: [island.x, lampY, island.z], rotation: [0, 0, 0], scale: [1.4 * s, 1.7 * s, 1.4 * s] });
+      glassColors.push(spectralColor);
+      glassIslands.push(island.id);
+      glows.push({ position: new THREE.Vector3(island.x, lampY, island.z), kind: 'spectral', size: 6, islandId: island.id });
+      for (const f of flames) glows.push({ position: new THREE.Vector3(...f), kind: 'spectral', size: 2.2, islandId: island.id });
+
+      // A small graveyard on one side of the island, outside the walls.
       const yard = rng.range(0, Math.PI * 2);
       for (let i = 0; i < rng.int(4, 9); i++) {
-        const at = ground(yard + rng.range(-0.5, 0.5), rng.range(0.3, 0.6));
+        const fraction = rng.range(0.3, 0.6);
+        const at = blockedByFort(fraction * island.radius, island.radius) ? null : ground(yard + rng.range(-0.5, 0.5), fraction);
         if (!at) continue;
         tombstones.push({
           position: [at[0], at[1] - 0.1, at[2]],
@@ -417,6 +447,14 @@ export function createIslands(world: World): IslandScene {
   for (const [geometry, placements] of props) {
     group.add(instanced(geometry, propMaterial, placements));
     disposables.push(geometry);
+  }
+  spire.body.dispose();
+  if (forts.triangleCount > 0) {
+    const fortGeometry = forts.build();
+    const fortMesh = new THREE.Mesh(fortGeometry, propMaterial);
+    fortMesh.name = 'haunted-forts';
+    group.add(fortMesh);
+    disposables.push(fortGeometry);
   }
   const glassGeometry = new THREE.BoxGeometry(1, 1, 1);
   const glassMesh = instanced(glassGeometry, glassMaterial, glass, glassColors);

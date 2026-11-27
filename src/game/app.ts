@@ -4,16 +4,15 @@ import { SHIP, TICK_SECONDS, WORLD } from '../sim/balance';
 import { angleDelta } from '../sim/math';
 import { OrdersView } from '../ui/ordersView';
 import { ORDERS, currentOrder, observe, readDone, writeDone, type OrderId } from './orders';
-import type { BattleResult, BattleSetup, InputEvent, Loadout } from '../sim/battle';
-import { fortLayout } from '../sim/layout';
+import type { BattleMode, BattleResult, BattleSetup, InputEvent, Loadout } from '../sim/battle';
 import { hashSeed } from '../sim/rng';
 import type { ShipState } from '../sim/ship';
 import { createWorldState, generateWorld, isAground, stepWorld, type World, type WorldState } from '../sim/world';
 import { ApiError } from '../net/backend';
 import { Session } from '../net/session';
-import { ECONOMY, REWARDS } from '../sim/balance';
+import { ECONOMY, FORTS, REWARDS } from '../sim/balance';
 import { DEFENSE_NAMES, SHIP_PART_NAMES, slotsFor } from '../sim/base';
-import { fortDifficulty, mineSlotPosition, slotPosition } from '../sim/layout';
+import { fortDifficulty, fortSetup, mineSlotPosition, slotPosition } from '../sim/layout';
 import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
 import { SidePanel, ago } from '../ui/sidePanel';
@@ -59,6 +58,8 @@ export interface BattleTicket {
   readonly title: string;
   readonly objective: string;
   readonly setup: BattleSetup;
+  /** A haunted fort's level, for drawing its walls; leave out for living islands. */
+  readonly fortLevel?: number;
   /** Called with the live result and the recorded inputs; returns the result card to show. */
   readonly finish: (result: BattleResult, inputs: readonly InputEvent[]) => Promise<ResultInfo> | ResultInfo;
 }
@@ -434,7 +435,7 @@ export class App {
           const { outcome } = await session.request<{ outcome: GhostOutcome }>('POST', '/ghosts/finish', { id: ticket.id, inputs });
           const { result, taken, rewards } = outcome;
           const held = !result.keepDestroyed;
-          const lines = battleLines(result);
+          const lines = battleLines(result, 'siege');
           lines.push(`+${rewards.cursedGold} cursed gold, +${rewards.ectoplasm} ectoplasm from the wrecks`);
           if (taken.gold + taken.cursedGold + taken.ectoplasm > 0) lines.push(`The ghosts carried off ${taken.gold + taken.cursedGold} gold and ${taken.ectoplasm} ectoplasm.`);
           lines.push('Last Light rests until the next Blood Moon.');
@@ -496,7 +497,7 @@ export class App {
         finish: async (_live, inputs) => {
           const { outcome } = await session.request<{ outcome: RaidOutcome }>('POST', '/raids/finish', { id: ticket.id, inputs });
           const { result, loot } = outcome;
-          const lines = battleLines(result);
+          const lines = battleLines(result, 'assault');
           lines.push(`Loot: ${loot.gold + loot.cursedGold} gold${loot.cursedGold ? ` (${loot.cursedGold} of it cursed)` : ''}, ${loot.ectoplasm} ectoplasm`);
           lines.push(`Infamy +${REWARDS.infamyPerStar * result.stars}`);
           return {
@@ -647,16 +648,8 @@ export class App {
       this.prompt.show(island.name, "Your ship lies in Davy Jones' Locker.", actions);
       return;
     }
-    const level = fortDifficulty(island);
-    actions.push(
-      { code: 'Digit1', key: '1', label: 'Attack the fort', run: () => void this.captureFort(island) },
-      { code: 'Digit2', key: '2', label: 'Solve the Lantern Lines', run: () => void this.capturePuzzle(island) },
-    );
-    this.prompt.show(
-      `${island.name}, haunted`,
-      `Fort strength ${level} of 3. Capture it for ${REWARDS.captureGold[level - 1]} gold and ${ECONOMY.tributePerMinute} gold a minute.`,
-      actions,
-    );
+    actions.push({ code: 'Digit1', key: '1', label: 'Attack the fort', run: () => void this.captureFort(island) });
+    this.prompt.show(`${island.name}, haunted`, fortDetail(island), actions);
   }
 
   /** Ticks off the captain's orders from what happened this frame, and shows the next one. */
@@ -718,11 +711,12 @@ export class App {
     const session = this.session;
     if (!session) return;
     await this.guarded(async () => {
-      const { ticket } = await session.request<{ ticket: { id: string; setup: BattleSetup } }>('POST', '/captures/start', { islandId: island.id, method: 'fort' });
+      const { ticket } = await session.request<{ ticket: { id: string; setup: BattleSetup } }>('POST', '/captures/start', { islandId: island.id });
       this.startBattle({
-        title: `Assault on ${island.name}`,
-        objective: 'Destroy the ghost light at the island’s heart. Q and E fire your broadsides.',
+        title: `Assault on ${island.name}, a level ${fortDifficulty(island)} fort`,
+        objective: fortObjective(ticket.setup),
         setup: ticket.setup,
+        fortLevel: fortDifficulty(island),
         finish: async (_live, inputs) => {
           const { outcome } = await session.request<{ outcome: CaptureOutcome }>('POST', '/captures/finish', { id: ticket.id, inputs });
           return this.captureResult(island, outcome);
@@ -731,48 +725,18 @@ export class App {
     });
   }
 
-  private async capturePuzzle(island: Island): Promise<void> {
-    const session = this.session;
-    if (!session) return;
-    await this.guarded(async () => {
-      const { ticket } = await session.request<{ ticket: { id: string; puzzleSeed: number } }>('POST', '/captures/start', { islandId: island.id, method: 'puzzle' });
-      const puzzle = generatePuzzle(ticket.puzzleSeed);
-      this.keyboard.sailLevel = 0;
-      this.keyboard.setEnabled(false);
-      const finish = async (orientation: Orientation[]) => {
-        this.keyboard.setEnabled(true);
-        await this.guarded(async () => {
-          const { outcome } = await session.request<{ outcome: CaptureOutcome }>('POST', '/captures/finish', { id: ticket.id, orientation });
-          this.results.show({ ...this.captureResult(island, outcome), actions: [{ label: 'Back to the sea', primary: true, run: () => {} }] });
-        });
-      };
-      this.puzzle.open(puzzle, {
-        title: `The Lantern Lines of ${island.name}`,
-        subtitle: 'Turn the mirrors so the lighthouse beam passes through every spirit totem.',
-        onSolved: (orientation) => void finish(orientation),
-        onGiveUp: (orientation) => void finish(orientation),
-      });
-    });
-  }
-
   private captureResult(island: Island, outcome: CaptureOutcome): ResultInfo {
-    const lines = outcome.result ? battleLines(outcome.result) : [];
+    const lines = battleLines(outcome.result, 'assault');
     if (outcome.won) {
       return {
         title: `${island.name} is yours`,
         tone: 'win',
-        ...(outcome.result ? { stars: outcome.result.stars } : {}),
+        stars: outcome.result.stars,
         lines: [...lines, `+${outcome.rewards.gold} gold, +${outcome.rewards.ectoplasm} ectoplasm`, `It pays ${ECONOMY.tributePerMinute} gold a minute in tribute.`],
         actions: [],
       };
     }
-    return {
-      title: `${island.name} stays haunted`,
-      tone: 'loss',
-      ...(outcome.result ? { stars: outcome.result.stars } : {}),
-      lines: outcome.result ? lines : ['The totems stay dark. Try again whenever you like.'],
-      actions: [],
-    };
+    return { title: `${island.name} stays haunted`, tone: 'loss', stars: outcome.result.stars, lines, actions: [] };
   }
 
   private step(): void {
@@ -867,7 +831,7 @@ export class App {
     this.captainBar.setVisible(false);
     this.prompt.hide();
     this.aground.show(null);
-    this.renderer.enterBattle(this.runner.current);
+    this.renderer.enterBattle(this.runner.current, ticket.fortLevel ?? 0);
     this.battleHud.show({ title: ticket.title, objective: ticket.objective }, ticket.setup.mode === 'assault');
   }
 
@@ -912,19 +876,12 @@ export class App {
   startScenario(name: string): void {
     if (name === 'practice-fort') {
       const island = this.world.islands[1]!;
-      const layout = fortLayout(island);
+      const setup = fortSetup(island, PRACTICE_LOADOUT, hashSeed(`practice-${Math.floor(this.time * 1000)}`));
       this.startBattle({
-        title: `Practice: the fort on ${island.name}`,
-        objective: 'Destroy the ghost light at the island’s heart',
-        setup: {
-          seed: hashSeed(`practice-${Math.floor(this.time * 1000)}`),
-          mode: 'assault',
-          island: { radius: island.radius, living: false, level: layout.level, seed: island.seed, slotCount: layout.slotCount, mineSlotCount: layout.mineSlotCount },
-          defenses: layout.defenses,
-          loadout: PRACTICE_LOADOUT,
-          fleet: { count: 0, level: 1 },
-          timeLimitSeconds: 150,
-        },
+        title: `Practice: the level ${fortDifficulty(island)} fort on ${island.name}`,
+        objective: fortObjective(setup),
+        setup,
+        fortLevel: fortDifficulty(island),
         finish: (result) => this.practiceResult(result, name),
       });
     } else if (name === 'practice-siege') {
@@ -951,10 +908,11 @@ export class App {
   }
 
   private practiceResult(result: BattleResult, scenario: string): ResultInfo {
-    const lines = battleLines(result);
+    const siege = scenario === 'practice-siege';
+    const lines = battleLines(result, siege ? 'siege' : 'assault');
     const again = { label: 'Try again', run: () => { this.leaveBattle(); this.startScenario(scenario); } };
     const back = { label: 'Back to the sea', primary: true, run: () => this.leaveBattle() };
-    if (result.ghostsTotal > 0) {
+    if (siege) {
       const held = !result.keepDestroyed;
       return { title: held ? 'Last Light holds' : 'Last Light has fallen', tone: held ? 'win' : 'loss', lines, actions: [back, again] };
     }
@@ -980,6 +938,7 @@ export class App {
           structuresStanding: s.structures.filter((x) => !x.destroyed && x.type !== 'mine').length,
           ghosts: s.ghosts.filter((g) => !g.sunk).length,
           hull: s.player.hp,
+          islandRadius: s.setup.island.radius,
         };
       },
       resultShowing: () => this.results.visible,
@@ -1038,23 +997,55 @@ export interface LeaderboardEntry {
 export interface CaptureOutcome {
   readonly won: boolean;
   readonly islandId: number;
-  readonly result: BattleResult | null;
+  readonly result: BattleResult;
   readonly rewards: { readonly gold: number; readonly ectoplasm: number };
 }
 
 /** Plain-words summary lines for a finished battle. */
-export function battleLines(result: BattleResult): string[] {
+export function battleLines(result: BattleResult, mode: BattleMode): string[] {
   const lines: string[] = [];
-  if (result.ghostsTotal > 0) {
+  if (mode === 'siege') {
     lines.push(`Ghost ships sunk: ${result.ghostsSunk} of ${result.ghostsTotal}`);
     lines.push(`Your island damaged: ${Math.round(result.destruction * 100)}%`);
     if (result.reason === 'dawn') lines.push('Dawn came and the fleet withdrew.');
   } else {
     lines.push(`Island destroyed: ${Math.round(result.destruction * 100)}%`);
     lines.push(result.keepDestroyed ? 'The keep fell.' : 'The keep still stands.');
+    if (result.ghostsTotal > 0) lines.push(`The island's ghost ships sunk: ${result.ghostsSunk} of ${result.ghostsTotal}`);
     if (result.reason === 'retreat') lines.push('You retreated.');
     if (result.reason === 'time') lines.push('Dawn came before the fort fell.');
   }
   lines.push(result.shipSunk ? 'Your ship sank.' : `Your hull: ${Math.ceil(result.hull)} of ${result.maxHull}`);
   return lines;
+}
+
+/** "a", "a and b", "a, b and c". */
+function listInWords(items: readonly string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/** Seconds as m:ss. */
+function clockText(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** What defends a haunted island and what taking it pays, in words, from its fort level. */
+export function fortDetail(island: Island): string {
+  const level = fortDifficulty(island);
+  const i = level - 1;
+  const mines = FORTS.mines[i]!;
+  const ghosts = FORTS.ghosts[i]!.count;
+  const parts = [`${FORTS.towers[i]} towers`];
+  if (mines > 0) parts.push(`${mines} ${mines === 1 ? 'mine' : 'mines'}`);
+  if (ghosts > 0) parts.push(`${ghosts} ghost ${ghosts === 1 ? 'ship' : 'ships'}`);
+  return `Fort level ${level} of ${FORTS.levels}: ${listInWords(parts)}. Break it within ${clockText(FORTS.timeLimitSeconds[i]!)} for ${REWARDS.captureGold[i]} gold and ${ECONOMY.tributePerMinute} gold a minute.`;
+}
+
+/** The battle's objective line for a fort assault. */
+export function fortObjective(setup: BattleSetup): string {
+  const ghosts = setup.fleet.count;
+  return ghosts > 0
+    ? `Destroy the ghost light at the island’s heart before dawn. Its ${ghosts === 1 ? 'ghost ship hunts' : `${ghosts} ghost ships hunt`} you: R loads Salt Shot.`
+    : 'Destroy the ghost light at the island’s heart before dawn. Q and E fire your broadsides.';
 }

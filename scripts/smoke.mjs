@@ -42,6 +42,41 @@ const check = (ok, message) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${message}`);
 };
 
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+/**
+ * Sails a fort battle with the keyboard the way the server tests' autopilot does: circle the
+ * island 14 m off its shore with the island to port, both broadsides held. Stops when it ends.
+ */
+async function sailLikeTheAutopilot(page, timeoutMs) {
+  await page.keyboard.down('KeyQ');
+  await page.keyboard.down('KeyE');
+  let held = null;
+  const ends = Date.now() + timeoutMs;
+  try {
+    while (Date.now() < ends) {
+      const s = await page.evaluate(() => ({ ship: window.__ghostlight.ship(), battle: window.__ghostlight.battle() }));
+      if (!s.battle || s.battle.result) break;
+      const { x, z, heading } = s.ship;
+      const ring = s.battle.islandRadius * 0.9 + 4 + 14;
+      const error = Math.hypot(x, z) - ring;
+      const desired = Math.atan2(x, z) - (Math.PI / 2 + Math.max(-0.6, Math.min(0.9, error * 0.03)));
+      const rudder = Math.round(Math.max(-1, Math.min(1, -wrapAngle(desired - heading) * 2.5)));
+      const want = rudder > 0 ? 'KeyD' : rudder < 0 ? 'KeyA' : null;
+      if (want !== held) {
+        if (held) await page.keyboard.up(held);
+        if (want) await page.keyboard.down(want);
+        held = want;
+      }
+      await sleep(50);
+    }
+  } finally {
+    if (held) await page.keyboard.up(held);
+    await page.keyboard.up('KeyQ');
+    await page.keyboard.up('KeyE');
+  }
+}
+
 /** Opens the game. Pages are calm (no automatic Blood Moon sieges) unless `calm: false`. */
 async function openGame(browser, base, query, errors, { calm = true } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
@@ -148,18 +183,18 @@ async function main() {
       .then(() => true)
       .catch(() => false);
     check(prompted, 'sailing toward a haunted island offers to capture it');
+    const promptText = await cap.locator('.context-prompt .cp-detail').textContent().catch(() => '');
+    check(/Fort level 1 of 5/.test(promptText ?? '') && !(await cap.getByRole('button', { name: /Lantern Lines/ }).count()), `the prompt shows the fort's level and offers only a battle (${promptText})`);
     await cap.keyboard.press('KeyS');
-    await cap.keyboard.press('Digit2');
-    await cap.waitForFunction(() => window.__ghostlight.puzzle() !== null, null, { timeout: 10000 }).catch(() => {});
-    const mirrors = await cap.evaluate(() => window.__ghostlight.puzzle());
-    check(Array.isArray(mirrors) && mirrors.length > 0, `pressing 2 opens the Lantern Lines (${mirrors?.length ?? 0} mirrors)`);
-    await cap.screenshot({ path: join(SHOTS, '07-lantern-lines.png') });
-    for (const m of mirrors ?? []) {
-      if (m.current !== m.solution) await cap.locator(`[data-cell="${m.cell}"]`).click();
-    }
-    await cap.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 10000 }).catch(() => {});
+    await cap.keyboard.press('Digit1');
+    await cap.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 10000 }).catch(() => {});
+    check((await cap.evaluate(() => window.__ghostlight.mode)) === 'battle', 'pressing 1 starts the battle for the fort');
+    await sleep(6000);
+    await cap.screenshot({ path: join(SHOTS, '07-capture-battle.png') });
+    await sailLikeTheAutopilot(cap, 170000);
+    await cap.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 15000 }).catch(() => {});
     const afterCapture = await cap.evaluate(() => window.__ghostlight.captain());
-    check(afterCapture && afterCapture.captured.includes(1), 'solving the puzzle captures the island on the server');
+    check(afterCapture && afterCapture.captured.includes(1), 'breaking the fort in the browser captures the island on the server');
     check(afterCapture && afterCapture.resources.gold > 600, `the capture pays its reward (${afterCapture?.resources.gold} gold)`);
     await cap.screenshot({ path: join(SHOTS, '08-island-captured.png') });
     await cap.getByRole('button', { name: 'Back to the sea' }).click();
@@ -269,6 +304,7 @@ async function main() {
     check(shut, 'island actions stay shut while the ship lies in the Locker');
     await deep.getByRole('button', { name: /Escape/ }).click();
     await deep.waitForFunction(() => window.__ghostlight.puzzle() !== null, null, { timeout: 10000 }).catch(() => {});
+    await deep.screenshot({ path: join(SHOTS, '16-locker-escape.png') });
     for (const m of (await deep.evaluate(() => window.__ghostlight.puzzle())) ?? []) {
       if (m.current !== m.solution) await deep.locator(`[data-cell="${m.cell}"]`).click();
     }

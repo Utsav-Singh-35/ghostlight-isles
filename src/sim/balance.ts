@@ -46,9 +46,9 @@ export const WORLD = {
   homeName: 'Last Light',
   /** Shore radius of the home island, metres. */
   homeIslandRadius: 55,
-  /** Smallest and largest shore radius of a haunted island, metres. */
+  /** Smallest and largest shore radius of a haunted island, metres. Each fort level uses a band inside this (FORTS.islandRadius). */
   minIslandRadius: 26,
-  maxIslandRadius: 62,
+  maxIslandRadius: 66,
   /** Least open water between the shores of two islands, metres. */
   islandGap: 70,
   /** Least distance from any shore to the edge of the world, metres. */
@@ -128,7 +128,7 @@ export const BATTLE = {
    * Broadsides reach the keep, a tall light at the island's heart, this much further than other
    * targets, metres. Without it a ship had to scrape the shore of a big island to hit the keep.
    */
-  keepReach: 14,
+  keepReach: 22,
   /** Broadsides auto-aim inside this angle either side of the beam, radians (55°). */
   firingArc: (55 * Math.PI) / 180,
   /** Safety cap on shots in flight. */
@@ -167,6 +167,10 @@ export const GHOSTS = {
   shotSpeed: 42,
   /** Ghosts circle this far outside the island's collision circle, metres. */
   orbitMargin: 8,
+  /** A haunted island's own ghosts hunt an attacker who comes within this far outside their ring, metres. */
+  guardReach: 70,
+  /** Hunting ghosts close to this distance from the attacker, then circle it, metres. Inside a Navigator's lantern light. */
+  huntDistance: 24,
   /** Ghosts appear this far from the island, metres. */
   spawnRadius: 215,
   /** Salt Shot slows a ghost to this share of its top speed. */
@@ -234,10 +238,52 @@ export const COSTS = {
   unlockLevel: { cannonTower: 1, spiritLantern: 1, boneCatapult: 2, mine: 1 },
 } as const;
 
+/**
+ * Haunted forts by fort level − 1 (levels 1 to 5). Islands further from Last Light have higher
+ * levels: bigger islands, more and stronger towers, mines, ghost ships and a longer dawn clock.
+ */
+export const FORTS = {
+  levels: 5,
+  /** The level is 1 + floor((distance / levelReach)² × 5), metres. Squaring spreads levels by area. */
+  levelReach: 900,
+  /** Shore radius band of an island at each level, metres. */
+  islandRadius: [
+    [26, 34],
+    [32, 42],
+    [38, 50],
+    [46, 58],
+    [54, 66],
+  ],
+  towers: [3, 4, 5, 6, 7],
+  slots: [5, 6, 7, 8, 9],
+  mines: [0, 1, 2, 3, 3],
+  /** Lowest and highest tower level at each fort level. */
+  towerLevels: [
+    [1, 1],
+    [1, 2],
+    [2, 2],
+    [2, 3],
+    [2, 3],
+  ],
+  keepLevel: [1, 1, 2, 3, 3],
+  /** Chance that a tower after the first is a Bone Catapult; the rest split between Cannon Towers and Spirit Lanterns. */
+  catapultShare: [0, 0.15, 0.25, 0.3, 0.3],
+  /** Ghost ships that rise from the island to hunt the attacker. */
+  ghosts: [
+    { count: 0, level: 1 },
+    { count: 1, level: 1 },
+    { count: 2, level: 1 },
+    { count: 2, level: 2 },
+    { count: 3, level: 2 },
+  ],
+  /** The fort must fall before dawn, seconds. */
+  timeLimitSeconds: [150, 165, 180, 195, 225],
+} as const;
+
 export const REWARDS = {
-  /** Capturing a fort, by its difficulty − 1. */
-  captureGold: [300, 500, 800],
-  captureEctoplasm: [10, 20, 35],
+  /** Capturing a fort, by its fort level − 1. */
+  captureGold: [300, 450, 650, 900, 1200],
+  captureEctoplasm: [10, 18, 28, 40, 55],
   /** A raid takes at most this share of the defender's storage, scaled by destruction. */
   raidShare: 0.3,
   infamyPerStar: 10,

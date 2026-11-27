@@ -113,7 +113,7 @@ describe('davy-jones-locker spec', () => {
   it("Property 4: a sunk ship can't fight", async () => {
     const attempt = fc.constantFrom(
       ['/captures/start', { islandId: 1, method: 'fort' }],
-      ['/captures/start', { islandId: 2, method: 'puzzle' }],
+      ['/captures/start', { islandId: 2 }],
       ['/raids/start', { targetId: RIVALS[0]!.id }],
       ['/ghosts/defend', {}],
     );

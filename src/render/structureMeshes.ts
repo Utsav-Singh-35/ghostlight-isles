@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { DefenseType } from '../sim/layout';
+import { ghostSpireGeometry } from './fortMeshes';
 import { lighthouseGeometry } from './islands';
 import { MeshBuilder, placed, vertexColorMaterial } from './meshBuilder';
 import { PALETTE } from './palette';
@@ -82,28 +83,6 @@ function mineGeometry(): THREE.BufferGeometry {
   b.add(new THREE.BoxGeometry(0.22, 0.2, 0.08), '#FFD27A', placed([0.3, 0.18, 0.96]));
   b.add(new THREE.BoxGeometry(0.62, 0.12, 0.08), '#FFD27A', placed([0, -0.22, 0.97]));
   return b.build();
-}
-
-/** The keep of a haunted island: a crooked black spire with a green ghost light on top. */
-export function ghostSpireGeometry(): { body: THREE.BufferGeometry; lanternHeight: number } {
-  const b = new MeshBuilder();
-  b.add(new THREE.CylinderGeometry(3.2, 4.2, 2.4, 7).translate(0, 1.2, 0), PALETTE.hauntedRock);
-  let y = 2.4;
-  let x = 0;
-  for (let i = 0; i < 4; i++) {
-    const h = 2.4;
-    const r = 1.6 - i * 0.28;
-    b.add(new THREE.CylinderGeometry(r - 0.2, r, h, 6).translate(0, h / 2, 0), i % 2 ? '#2A2C33' : '#33363E', placed([x, y, 0], [0, i * 0.7, 0.05 * (i % 2 ? -1 : 1)]));
-    y += h - 0.1;
-    x += i % 2 ? -0.25 : 0.25;
-  }
-  b.add(new THREE.BoxGeometry(1.6, 0.14, 1.6).translate(x, y + 0.05, 0), IRON);
-  b.add(new THREE.BoxGeometry(1.6, 0.14, 1.6).translate(x, y + 1.95, 0), IRON);
-  for (const [dx, dz] of [[-0.7, -0.7], [0.7, -0.7], [0.7, 0.7], [-0.7, 0.7]] as const) {
-    b.add(new THREE.BoxGeometry(0.1, 1.9, 0.1).translate(x + dx, y + 1.0, dz), IRON);
-  }
-  b.add(new THREE.ConeGeometry(1.15, 1.3, 4).translate(x, y + 2.65, 0), IRON, placed([0, 0, 0], [0, Math.PI / 4, 0]));
-  return { body: b.build(), lanternHeight: y + 1.0 };
 }
 
 export interface StructureView {
@@ -205,9 +184,10 @@ export class StructureSet {
   }
 }
 
-/** A keep model: the lighthouse for living islands, the ghost spire for haunted ones. */
-export function createKeepMesh(living: boolean): { mesh: THREE.Group; lanternHeight: number; dispose(): void } {
+/** A keep model: the lighthouse for living islands, the ghost spire for haunted ones, `scale` times its normal size. */
+export function createKeepMesh(living: boolean, scale = 1): { mesh: THREE.Group; lanternHeight: number; scale: number; dispose(): void } {
   const group = new THREE.Group();
+  group.scale.setScalar(scale);
   const { body, lanternHeight } = living ? lighthouseGeometry() : ghostSpireGeometry();
   const material = vertexColorMaterial();
   group.add(new THREE.Mesh(body, material));
@@ -222,7 +202,8 @@ export function createKeepMesh(living: boolean): { mesh: THREE.Group; lanternHei
   group.add(glass);
   return {
     mesh: group,
-    lanternHeight,
+    lanternHeight: lanternHeight * scale,
+    scale,
     dispose() {
       body.dispose();
       material.dispose();

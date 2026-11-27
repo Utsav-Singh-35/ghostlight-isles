@@ -19,7 +19,7 @@ The full brief is in `Documents/idea-brief.md`. Rules and starting numbers are i
 3. **Fair multiplayer.** Raids are asynchronous: the attacker fights a saved copy of the defender's island. The server replays every battle from its seed and inputs, and rejects results that do not match.
 
 ## Scope for the hackathon (deadline Dec 4, 2026, 2:00 PM PT)
-- **In:** 3D sailing, capturing islands (fort battle or the Lantern Lines puzzle), base building, raids with reports and protection, the ghost fleet, the Blood Moon, cursed gold, Davy Jones' Locker, the Halloween weapons and defenses in the design doc, guest login, a leaderboard.
+- **In:** 3D sailing, capturing islands by fort battle (five fort levels that get harder further from home; the Lantern Lines puzzle is the Locker escape), base building, raids with reports and protection, the ghost fleet, the Blood Moon, cursed gold, Davy Jones' Locker, the Halloween weapons and defenses in the design doc, guest login, a leaderboard.
 - **Only if ahead:** Possession, Trick or Treat, Mary Celeste drifters, the Kiro Crew app.
 - **Out until after the hackathon:** live ship-to-ship multiplayer, clans, chat, the Hollow Sea, the Flying Dutchman, LLM parley.
 

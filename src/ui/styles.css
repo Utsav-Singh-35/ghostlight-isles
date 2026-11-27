@@ -510,6 +510,26 @@ kbd {
   color: var(--spectral);
 }
 
+/* The last 30 seconds: bigger, warm red and pulsing, and the text says why. */
+.bh-clock-urgent {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ff9a8a;
+  animation: bh-clock-pulse 1s ease-in-out infinite;
+}
+
+@keyframes bh-clock-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bh-clock-urgent {
+    animation: none;
+  }
+}
+
 .bh-retreat {
   position: absolute;
   top: 1rem;

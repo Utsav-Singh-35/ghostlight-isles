@@ -11,7 +11,7 @@ Built solo with [Kiro](https://kiro.dev) for [Kiroween 2026](https://kiroween.de
 ## Try it in two minutes
 
 1. Press **Set sail**. The **Captain's orders** card under your name tells you the next thing to try and ticks itself off as you go.
-2. Sail at the green-lit island ahead, **Coffin Rock**, and press **2** to solve its Lantern Lines puzzle (or **1** to attack its fort). It's yours, and it pays tribute.
+2. Sail at the green-lit island ahead, **Coffin Rock**, a level-1 fort. Press **1**, then circle it firing **Q** and **E** until its ghost light falls (about 40 seconds). It's yours, and it pays tribute.
 3. Press **Summon the Blood Moon**. The night turns red, a bell tolls, and the ghost fleet comes for Last Light. Salt Shot is loaded for you: sail close to light the ghosts with your lantern, then sink them with **Q** and **E**.
 4. Press **R** at sea to raid a rival captain's island, then **L** to read the Captain's Log and the leaderboard.
 
@@ -19,13 +19,14 @@ Short on time? The title screen also has **Try a fort battle** and **Summon the 
 
 | | |
 |---|---|
-| ![The Lantern Lines puzzle](Documents/screenshots/07-lantern-lines.png) | ![The Blood Moon](Documents/screenshots/13-blood-moon.png) |
+| ![Attacking a haunted fort](Documents/screenshots/04-fort-battle.png) | ![The Blood Moon](Documents/screenshots/13-blood-moon.png) |
 | ![The ghost fleet besieges Last Light](Documents/screenshots/14-siege.png) | ![Davy Jones' Locker](Documents/screenshots/15-davy-jones-locker.png) |
 
 ## What's in the game
 
 - **Sailing:** a faceted night sea with moon glitter, fog and lantern light; 14 islands generated from a seed; three sail settings, steering with momentum and solid shores.
-- **Capturing islands:** sink a haunted island's fort from your ship, or turn mirrors in the Lantern Lines puzzle until the lighthouse beam lights every spirit totem. Captured islands pay gold every minute.
+- **Capturing islands:** break a haunted island's fort from your ship before dawn. Captured islands pay gold every minute.
+- **Forts get harder the further you sail:** five fort levels, set by distance from Last Light. Harder islands are bigger, with taller walls, more and stronger towers, mines, a bigger keep and ghost ships that rise from the island to hunt you. A new ship takes the level-1 forts; level 5 needs a fully refitted ship.
 - **Base building on Last Light:** Cannon Towers, Spirit Lanterns (they reveal ghosts), Bone Catapults and Jack-o'-lantern Mines, three levels each, plus home upgrades for more slots and storage. The shipwright refits your hull, cannons, Salt Shot, Witchfire barrels and the Bat Swarm.
 - **Raids (asynchronous multiplayer):** attack a saved copy of another captain's island while they're away. The server replays your battle from its seed and your inputs and pays loot only for what really happened. Raided islands get 4 hours of protection and a report. Ten rival captains keep the sea busy from the first minute, and a leaderboard ranks everyone by infamy.
 - **The Blood Moon and the ghost fleet:** every 20 minutes the moon turns red for every player at once, and the fleet sails for your island. Its size grows with the cursed gold you hoard and the strength of your home.
@@ -37,6 +38,7 @@ Short on time? The title screen also has **Try a fort battle** and **Summon the 
 ## How the spooky design does a job
 
 - **Fog hides, lanterns reveal.** Ghosts stay faint, and your guns can't aim at them until your stern lantern, a Spirit Lantern or the Bat Swarm lights them, so a lantern is a weapon.
+- **Danger shows from afar.** Harder forts stand on bigger islands with taller walls and more green braziers, and every label says the fort's level in words.
 - **Warm means living, green means dead.** Living ships and towers glow lantern orange (`#FFB347`); ghosts glow spectral green (`#5CFFB0`). Color is never the only cue: ghosts are see-through, shimmer, trail wisps and have their own silhouette, and labels say "haunted" or "yours" in words.
 - **The Blood Moon is a warning.** Sky, sea and fog turn red, the fog thickens, a ship's bell tolls and a heartbeat starts. You know the fleet is coming without reading anything.
 - **Sound is a second channel.** Every sinking, explosion and mine is always heard, even in the busiest moment of a battle, and sounds pan toward where they happened.
@@ -53,7 +55,7 @@ Short on time? The title screen also has **Try a fort battle** and **Summon the 
 | R | Open the raid list | Switch between cannonballs and Salt Shot |
 | F | | Throw a Witchfire barrel (once the shipwright fits one) |
 | B | | Release the Bat Swarm (once the shipwright fits it) |
-| 1 / 2 | Island actions (attack the fort, solve the puzzle, open your base) | |
+| 1 | Island actions (attack the fort, open your base) | |
 | Tab | Open or close your base | |
 | L | Captain's Log and leaderboard | |
 | M | Sound on or off | Same |
@@ -94,7 +96,7 @@ npm run dev        # http://localhost:5173, with the game server at /api
 
 Everything Kiro uses lives in [`.kiro/`](.kiro), and a running log of what each feature caught is in [Documents/kiro-usage-log.md](Documents/kiro-usage-log.md).
 
-- **Specs:** [ten specs](.kiro/specs), one per game system, each written before its code: EARS requirements, a design with numbered correctness properties (61 in all), and tasks.
+- **Specs:** [ten specs](.kiro/specs), one per game system, each written before its code: EARS requirements, a design with numbered correctness properties (64 in all), and tasks.
 - **Property-based tests:** every correctness property is a fast-check test with the same number and name. They found a floating-point bug in the wave phases, and they keep the server and the rules from drifting apart. Example and balance tests from the same specs found forts whose keeps were out of reach, twice.
 - **Steering:** product, tech and structure rules always load; simulation, rendering and testing conventions load only for matching files; the game design loads automatically for gameplay work, so balance numbers are always at hand.
 - **Hooks:** a session brief with the time left and the next feature; a commit gate that blocks commits unless tests, types and asset credits pass (it caught a test runner that only worked from some terminals); a simulation test run after every change to the game rules; and a credit check for new assets.

@@ -45,6 +45,22 @@ export class MeshBuilder {
     return this;
   }
 
+  /** Adds a geometry that already has vertex colors (from another builder), moved by `matrix`. */
+  addColored(geometry: THREE.BufferGeometry, matrix?: THREE.Matrix4): this {
+    const source = geometry.index ? geometry.toNonIndexed() : geometry;
+    const position = source.getAttribute('position') as THREE.BufferAttribute;
+    const color = source.getAttribute('color') as THREE.BufferAttribute | undefined;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < position.count; i++) {
+      v.fromBufferAttribute(position, i);
+      if (matrix) v.applyMatrix4(matrix);
+      this.positions.push(v.x, v.y, v.z);
+      this.colors.push(color ? color.getX(i) : 1, color ? color.getY(i) : 1, color ? color.getZ(i) : 1);
+    }
+    if (source !== geometry) source.dispose();
+    return this;
+  }
+
   build(): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));

@@ -337,20 +337,24 @@ export function createBattle(rawSetup: BattleSetup): BattleState {
     orbit: 1,
   };
 
+  // A siege's fleet sails in from the edge of the arena. In an assault the ghosts are the fort's
+  // own: they rise on the ring around the island and hunt the attacker.
   const ghosts: Combatant[] = [];
-  if (!assault) {
-    const { count, level } = setup.fleet;
+  const { count, level } = setup.fleet;
+  if (!assault || count > 0) {
     const hp = at(GHOSTS.hp, level);
     const offset = rng.range(-Math.PI, Math.PI);
+    const spawnRadius = assault ? orbitRing(arena) : GHOSTS.spawnRadius;
     for (let i = 0; i < count; i++) {
       const a = offset + (i / Math.max(1, count)) * TAU + rng.range(-0.3, 0.3);
+      const orbit = i % 2 === 0 ? 1 : -1;
       ghosts.push({
         id: nextId++,
         kind: 'ghost',
         ship: {
-          x: Math.sin(a) * GHOSTS.spawnRadius,
-          z: Math.cos(a) * GHOSTS.spawnRadius,
-          heading: wrapAngle(a + Math.PI),
+          x: Math.sin(a) * spawnRadius,
+          z: Math.cos(a) * spawnRadius,
+          heading: wrapAngle(assault ? a + (orbit * Math.PI) / 2 : a + Math.PI),
           speed: GHOST_SHIP.maxSpeed * 0.6,
           sailLevel: 2,
           sail: 1,
@@ -363,7 +367,7 @@ export function createBattle(rawSetup: BattleSetup): BattleState {
         cooldown: secondsToTicks(1 + rng.next() * 1.5),
         slowedUntil: 0,
         sunk: false,
-        orbit: i % 2 === 0 ? 1 : -1,
+        orbit,
       });
     }
   }
@@ -396,6 +400,19 @@ function ghostSteer(ghost: Combatant, ring: number): ShipInput {
   const error = d - ring;
   const lean = error > 0 ? Math.min(0.9, error * 0.02) : -Math.min(0.6, -error * 0.05);
   const desired = around + ghost.orbit * (Math.PI / 2 + lean);
+  return { rudder: clamp(-angleDelta(heading, desired) * 2.5, -1, 1), sailLevel: 2 };
+}
+
+/** A fort's own ghost: patrols the ring around its island, and hunts the attacker once it comes near. */
+function guardSteer(ghost: Combatant, player: Combatant, ring: number): ShipInput {
+  const p = player.ship;
+  if (player.sunk || Math.hypot(p.x, p.z) > ring + GHOSTS.guardReach) return ghostSteer(ghost, ring);
+  const { x, z, heading } = ghost.ship;
+  const dx = p.x - x;
+  const dz = p.z - z;
+  const toward = Math.atan2(dx, dz);
+  // Close in, then circle the attacker inside its lantern light.
+  const desired = Math.hypot(dx, dz) > GHOSTS.huntDistance ? toward : toward + ghost.orbit * (Math.PI / 2);
   return { rudder: clamp(-angleDelta(heading, desired) * 2.5, -1, 1), sailLevel: 2 };
 }
 
@@ -492,17 +509,18 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
   for (const g of ghosts) {
     if (g.sunk) continue;
     const stats = g.slowedUntil > tick ? SLOWED_GHOST : GHOST_SHIP;
-    g.ship = resolveCollisions(arena, stepShip(g.ship, ghostSteer(g, ring), TICK_SECONDS, stats));
+    const steer = assault ? guardSteer(g, player, ring) : ghostSteer(g, ring);
+    g.ship = resolveCollisions(arena, stepShip(g.ship, steer, TICK_SECONDS, stats));
   }
 
-  // Who each side can hit, after movement.
+  // Who each side can hit, after movement. In an assault the island's ghosts fight for the island.
   const living = player.sunk ? [] : [shipTarget(player)];
   const ghostTargets = ghosts.filter((g) => !g.sunk).map(shipTarget);
   const standing = structures.filter((s) => !s.destroyed && s.type !== 'mine').map(structureTarget);
-  const targetsOf = (side: Side): readonly Target[] => {
-    if (assault) return side === 'player' ? standing : side === 'island' ? living : [];
-    return side === 'ghost' ? [...living, ...standing] : ghostTargets;
-  };
+  const hostileToPlayer = assault ? [...standing, ...ghostTargets] : ghostTargets;
+  const hostileToIsland = assault ? living : ghostTargets;
+  const hostileToGhosts = assault ? living : [...living, ...standing];
+  const targetsOf = (side: Side): readonly Target[] => (side === 'player' ? hostileToPlayer : side === 'island' ? hostileToIsland : hostileToGhosts);
 
   const shots: Shot[] = state.shots.slice();
   const fires: FireZone[] = state.fires.filter((f) => f.untilTick > tick);
@@ -643,8 +661,8 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
     events.push({ type: 'fire', kind, side: 'island', x: st.x, z: st.z, sourceId: st.id, targetId: target.id });
   }
 
-  // 4. Ghost ships fire.
-  if (!assault) {
+  // 4. Ghost ships fire: at structures and the ship in a siege, at the attacker in an assault.
+  {
     const level = setup.fleet.level;
     const prey = targetsOf('ghost');
     for (const g of ghosts) {

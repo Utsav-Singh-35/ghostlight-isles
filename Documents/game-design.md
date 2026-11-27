@@ -50,7 +50,7 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 ## Battles (code)
 - One deterministic simulation runs every fight in a 240 m arena around the island, for up to **150 s**.
 - **Assault** (fort captures and raids): your ship against the island's defenses. **Siege** (ghost raids): ghost ships against your island; your towers and your ship fight back.
-- Broadsides: Q fires port, E fires starboard. **3 / 4 / 5** shots per side by cannon level, **14 / 17 / 21** damage each, range **64 m** (**78 m** against the keep, which stands at the island's heart), reload **2 s** (Gunner: ×0.8, ghost Gunner: ×0.65). Broadsides aim themselves at the nearest target within 55° of the beam.
+- Broadsides: Q fires port, E fires starboard. **3 / 4 / 5** shots per side by cannon level, **14 / 17 / 21** damage each, range **64 m** (**86 m** against the keep, which stands at the island's heart), reload **2 s** (Gunner: ×0.8, ghost Gunner: ×0.65). Broadsides aim themselves at the nearest target within 55° of the beam.
 - R swaps cannonballs and Salt Shot. F throws a Witchfire Barrel (burns for 6 s, 9 s cooldown). B sends the Bat Swarm (reveals everything for 6 to 10 s, 25 s cooldown).
 - Towers: Cannon Tower **6 / 9 / 13** damage, range 70 m; Spirit Lantern **9 / 12 / 16**, range 60 m; Bone Catapult **22 / 28 / 36** splash, range 96 m, doesn't lead its target. Mines: **30 / 40 / 52** damage when a hostile ship comes within 7 m.
 - Ghost ships: **55 to 150** health and **7 to 15** damage by fleet level, range 66 m. They circle the island 8 m outside its shore.
@@ -78,10 +78,24 @@ Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 
 - When your ship sinks, one living crew member drowns and returns as a **ghost** for **3 battles** with a stronger ability. Ghost Gunner: reloads 35% faster and cannonballs hit ghosts at full strength. Ghost Navigator: shows ghosts 45 m off and every hidden mine.
 - Each battle uses up one of a ghost's battles; then the post is empty. Keep a ghost for 3 more battles for **40 ectoplasm**, or hire a new living crew member for an empty post for **150 gold** (shipwright, in the base panel).
 
-## Capturing islands
-Each haunted island can be captured in one of two ways:
-1. **Fort battle:** sink the island's towers from your ship.
-2. **Lantern Lines puzzle:** rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. The server picks a new seed for every attempt, and every generated puzzle has a solution. The same puzzle type is used to escape Davy Jones' Locker, with a time limit.
+## Capturing islands (code)
+Haunted islands are taken by battle only: destroy every tower and the keep (the ghost light at the island's heart) before dawn. Forts get harder the further they lie from Last Light. The level is `1 + floor((distance / 900 m)² × 5)`, so each level covers about a fifth of the sea, and the first island ahead of the start is always level 1.
+
+| Level | Island radius | Towers | Tower levels | Mines | Keep level | Island ghosts | Dawn in | Pays |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 26 to 34 m | 3 | 1 | 0 | 1 | none | 2:30 | 300 gold, 10 ectoplasm |
+| 2 | 32 to 42 m | 4 | 1 to 2 | 1 | 1 | 1 at level 1 | 2:45 | 450 gold, 18 ectoplasm |
+| 3 | 38 to 50 m | 5 | 2 | 2 | 2 | 2 at level 1 | 3:00 | 650 gold, 28 ectoplasm |
+| 4 | 46 to 58 m | 6 | 2 to 3 | 3 | 3 | 2 at level 2 | 3:15 | 900 gold, 40 ectoplasm |
+| 5 | 54 to 66 m | 7 | 2 to 3 | 3 | 3 | 3 at level 2 | 3:45 | 1200 gold, 55 ectoplasm |
+
+- The first tower is always a Cannon Tower; the rest are Cannon Towers, Spirit Lanterns and, from level 2, Bone Catapults.
+- **Island ghosts** rise on a ring around the island. They patrol it, hunt the attacker once it comes within 70 m of the ring (circling it 24 m away, inside a Navigator's lantern light) and fire only at the attacker. Your shots can sink them; cannonballs do half damage, Salt Shot full damage.
+- Broadsides reach the keep 22 m further than other targets (86 m), so you needn't scrape the shore of a big island to hit it.
+- Balance with the scripted autopilot: a new ship takes every level-1 fort and most level-2 forts, loses at level 3 (a ship with level-2 cannons, Salt Shot and hull takes it), and level 4 and 5 need a fully refitted ship.
+- Each captured island pays 12 gold a minute in tribute, whatever its level.
+
+The Lantern Lines puzzle is now only the escape from Davy Jones' Locker: rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. The server picks a new seed for every escape, and every generated puzzle has a solution.
 
 ## Raids (asynchronous multiplayer)
 - You attack a saved copy of another player's island. Its defenses fight on their own.

@@ -1,31 +1,16 @@
-import { BATTLE, REWARDS, WORLD } from '../sim/balance';
-import { runBattle, type BattleResult, type BattleSetup } from '../sim/battle';
+import { REWARDS, WORLD } from '../sim/balance';
+import { runBattle } from '../sim/battle';
 import { capsFor, earn } from '../sim/economy';
-import { fortDifficulty, fortLayout } from '../sim/layout';
+import { fortDifficulty, fortSetup } from '../sim/layout';
 import { addReport, collectTribute, loadoutOf, publicProfile, type PendingBattle, type Profile } from '../sim/profile';
-import { generatePuzzle, isSolved, sanitizeOrientation } from '../sim/puzzle';
 import { hashSeed } from '../sim/rng';
-import { generateWorld, type Island } from '../sim/world';
+import { generateWorld } from '../sim/world';
 import { afterBattle } from './aftermath';
 import { saveProfile } from './players';
 import { HttpError, intField, randomHex, route, stringField } from './router';
 
-/** Progress always happens in the standard sea, so island ids and seeds are the same for everyone. */
+/** Progress always happens in the standard sea, so island ids, fort levels and seeds are the same for everyone. */
 export const STANDARD_WORLD = generateWorld(hashSeed(WORLD.defaultSeed));
-
-/** The battle setup for capturing a haunted island's fort. */
-export function fortSetup(island: Island, profile: Profile, seed: number): BattleSetup {
-  const layout = fortLayout(island);
-  return {
-    seed,
-    mode: 'assault',
-    island: { radius: island.radius, living: false, level: layout.level, seed: island.seed, slotCount: layout.slotCount, mineSlotCount: layout.mineSlotCount },
-    defenses: layout.defenses,
-    loadout: loadoutOf(profile),
-    fleet: { count: 0, level: 1 },
-    timeLimitSeconds: BATTLE.timeLimitSeconds,
-  };
-}
 
 /** Throws unless the ship can sail out to fight. */
 export function requireAfloat(profile: Profile): void {
@@ -34,42 +19,32 @@ export function requireAfloat(profile: Profile): void {
 
 route('POST', '/captures/start', true, async ({ ctx, body, profile }) => {
   const islandId = intField(body, 'islandId', 1, STANDARD_WORLD.islands.length - 1);
-  const method = body.method;
-  if (method !== 'fort' && method !== 'puzzle') throw new HttpError(400, 'Choose "fort" or "puzzle".');
+  // Islands are taken by battle only; the Lantern Lines puzzle is the escape from Davy Jones' Locker.
+  if (body.method !== undefined && body.method !== 'fort') throw new HttpError(400, 'Islands are taken by breaking their fort in battle.');
   if (profile.captured.includes(islandId)) throw new HttpError(409, 'That island is already yours.');
   requireAfloat(profile);
   const island = STANDARD_WORLD.islands[islandId]!;
   const id = randomHex(ctx, 8);
-  const seed = ctx.random();
-  const battle: PendingBattle =
-    method === 'fort'
-      ? { id, kind: 'capture', setup: fortSetup(island, profile, seed), puzzleSeed: 0, target: String(islandId), startedAt: ctx.now() }
-      : { id, kind: 'puzzle', setup: null, puzzleSeed: seed, target: String(islandId), startedAt: ctx.now() };
+  const setup = fortSetup(island, loadoutOf(profile), ctx.random());
+  const battle: PendingBattle = { id, kind: 'capture', setup, puzzleSeed: 0, target: String(islandId), startedAt: ctx.now() };
   const next = { ...profile, battle };
   await saveProfile(ctx, next);
-  return { profile: publicProfile(next), ticket: { id, kind: battle.kind, setup: battle.setup, puzzleSeed: battle.puzzleSeed, islandId } };
+  return { profile: publicProfile(next), ticket: { id, setup, islandId } };
 });
 
 route('POST', '/captures/finish', true, async ({ ctx, body, profile }) => {
   const id = stringField(body, 'id', 64);
   const pending = profile.battle;
-  if (!pending || pending.id !== id || (pending.kind !== 'capture' && pending.kind !== 'puzzle')) {
+  if (!pending || pending.id !== id || pending.kind !== 'capture' || !pending.setup) {
     throw new HttpError(409, 'That capture is already over.');
   }
   const islandId = Number(pending.target);
   const island = STANDARD_WORLD.islands[islandId]!;
-  let won: boolean;
-  let result: BattleResult | null = null;
-  if (pending.kind === 'capture' && pending.setup) {
-    // The server's own replay decides; the client's result is never trusted.
-    result = runBattle(pending.setup, body.inputs).result!;
-    won = result.keepDestroyed;
-  } else {
-    const puzzle = generatePuzzle(pending.puzzleSeed);
-    won = isSolved(puzzle, sanitizeOrientation(puzzle, body.orientation));
-  }
+  // The server's own replay decides; the client's result is never trusted.
+  const result = runBattle(pending.setup, body.inputs).result!;
+  const won = result.keepDestroyed;
 
-  let next: Profile = afterBattle({ ...profile, battle: null }, result, pending.setup?.seed ?? pending.puzzleSeed);
+  let next: Profile = afterBattle({ ...profile, battle: null }, result, pending.setup.seed);
   const rewards = { gold: 0, ectoplasm: 0 };
   if (won && !next.captured.includes(islandId)) {
     const level = fortDifficulty(island);
@@ -90,7 +65,7 @@ route('POST', '/captures/finish', true, async ({ ctx, body, profile }) => {
     next = addReport(next, {
       at: ctx.now(),
       title: `${island.name} is yours`,
-      detail: `${pending.kind === 'puzzle' ? 'You lit every totem.' : 'You broke the fort.'} +${rewards.gold} gold, +${rewards.ectoplasm} ectoplasm.`,
+      detail: `You broke the level ${level} fort. +${rewards.gold} gold, +${rewards.ectoplasm} ectoplasm.`,
       tone: 'good',
     });
   }

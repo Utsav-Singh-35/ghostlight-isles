@@ -1,4 +1,4 @@
-import { SHIP, WORLD } from './balance';
+import { FORTS, SHIP, WORLD } from './balance';
 import { clamp } from './math';
 import { createRng, mixSeed } from './rng';
 import { createShip, stepShip, type ShipInput, type ShipState } from './ship';
@@ -61,6 +61,15 @@ export function collisionRadius(island: Island): number {
   return island.radius * WORLD.collisionScale + SHIP.radius;
 }
 
+/** How hard a haunted fort is, 1 to 5. */
+export type FortLevel = 1 | 2 | 3 | 4 | 5;
+
+/** The fort level of a haunted island this far from Last Light. Squaring the share spreads the levels by area. */
+export function fortLevelAt(distance: number): FortLevel {
+  const share = Number.isFinite(distance) ? Math.max(0, distance) / FORTS.levelReach : 0;
+  return (1 + Math.floor(Math.min(0.9999, share * share) * FORTS.levels)) as FortLevel;
+}
+
 /** Builds the islands and the starting point for a seed. The same seed always gives the same world. */
 export function generateWorld(seed: number): World {
   const rng = createRng(seed);
@@ -81,7 +90,6 @@ export function generateWorld(seed: number): World {
 
   for (let attempt = 0; attempt < WORLD.placementAttempts && islands.length < WORLD.islandCount; attempt++) {
     const id = islands.length;
-    const radius = rng.range(WORLD.minIslandRadius, WORLD.maxIslandRadius);
     // The first haunted island sits ahead of the spawn, so it shows through the fog at once.
     const first = id === 1;
     const angle = first
@@ -89,7 +97,10 @@ export function generateWorld(seed: number): World {
       : rng.range(-Math.PI, Math.PI);
     const distance = first
       ? rng.range(WORLD.firstIslandMinDistance, WORLD.firstIslandMaxDistance)
-      : Math.sqrt(rng.next()) * (maxReach - radius);
+      : Math.sqrt(rng.next()) * maxReach;
+    // Forts get harder further out, and harder islands are bigger.
+    const [minRadius, maxRadius] = FORTS.islandRadius[fortLevelAt(distance) - 1]!;
+    const radius = rng.range(minRadius, maxRadius);
     const x = Math.sin(angle) * distance;
     const z = Math.cos(angle) * distance;
 

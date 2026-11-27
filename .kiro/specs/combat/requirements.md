@@ -34,13 +34,15 @@ Ship battles for Ghostlight Isles. One deterministic battle simulation serves th
 5. THE Simulation SHALL let defenses other than Spirit Lanterns aim only at ghosts that are revealed.
 
 ### Requirement 3: Ghost ships
-**User Story:** As a defender, I want ghost ships that circle my island and fire at it, so that sieges feel dangerous.
+**User Story:** As a defender, I want ghost ships that circle my island and fire at it, so that sieges feel dangerous. As an attacker, I want a haunted island's own ghosts to come for me, so that harder forts feel dangerous too.
 
 #### Acceptance Criteria
 1. WHEN a siege starts, THE Simulation SHALL spawn the ghost fleet at the edge of the arena.
 2. THE Simulation SHALL steer each ghost ship onto a ring around the island and fire at the nearest structure or the player's ship in range.
 3. WHILE a ghost ship is slowed by Salt Shot, THE Simulation SHALL halve its top speed.
 4. A ghost ship SHALL be revealed WHILE it is within range of a standing Spirit Lantern, within the player's lantern light, or the Bat Swarm is active.
+5. WHEN an assault's setup includes ghost ships (a haunted fort's island ghosts), THE Simulation SHALL raise them on the ring around the island; they SHALL patrol the ring, hunt the player's ship WHILE it is within `GHOSTS.guardReach` of the ring, and fire only at the player's ship.
+6. In an assault, THE Simulation SHALL let the player's weapons hit the island's ghosts, and SHALL never let the island's towers, mines or ghosts damage each other.
 
 ### Requirement 4: Ending and scoring
 **User Story:** As a player, I want clear outcomes, so that I know what I won or lost.
