@@ -6,6 +6,7 @@ import './account';
 import './base';
 import './capture';
 import './ghosts';
+import './locker';
 import './raids';
 import { authenticate } from './players';
 import { HttpError, findRoute, type ServerContext } from './router';

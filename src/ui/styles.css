@@ -673,9 +673,12 @@ kbd {
 }
 
 /* ---- Result card ---- */
+/* Full-screen layers stack as: Locker 10, puzzle 20, result 30, toasts 40.
+   The escape puzzle opens on top of the Locker, and results and toasts sit above both. */
 .result {
   position: absolute;
   inset: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -812,6 +815,7 @@ kbd {
 /* ---- Toasts ---- */
 .toasts {
   position: absolute;
+  z-index: 40;
   top: 4.2rem;
   right: 1.2rem;
   display: flex;
@@ -849,6 +853,7 @@ kbd {
 .puzzle {
   position: absolute;
   inset: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1233,6 +1238,94 @@ kbd {
 .hud-top-right {
   display: flex;
   gap: 0.5rem;
+}
+
+/* ---- Davy Jones' Locker ---- */
+.canvas-drowned {
+  filter: hue-rotate(110deg) saturate(0.6) brightness(0.45) blur(3px);
+  transition: filter 1.2s ease;
+}
+
+.locker {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: auto;
+  background: radial-gradient(ellipse at 50% 120%, rgba(30, 90, 80, 0.35) 0%, rgba(2, 16, 18, 0.85) 60%, rgba(1, 6, 8, 0.95) 100%);
+}
+
+.locker[hidden] {
+  display: none;
+}
+
+.locker-bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.locker-bubble {
+  position: absolute;
+  bottom: -20px;
+  border: 1px solid rgba(200, 255, 230, 0.45);
+  border-radius: 50%;
+  background: rgba(200, 255, 230, 0.06);
+  animation: rise linear infinite;
+}
+
+@keyframes rise {
+  from {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  to {
+    transform: translate(-30px, -110vh);
+    opacity: 0;
+  }
+}
+
+.locker-card {
+  position: relative;
+  max-width: 32rem;
+  padding: 1.6rem 2rem;
+  border: 1px solid rgba(92, 255, 176, 0.35);
+  border-radius: 18px;
+  text-align: center;
+  background: rgba(2, 18, 20, 0.85);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+}
+
+.locker-title {
+  margin: 0;
+  font: 400 2rem var(--title-font);
+  color: #c8ffe6;
+  text-shadow: 0 0 18px rgba(92, 255, 176, 0.5);
+}
+
+.locker-text {
+  margin: 0.9rem 0 1.3rem;
+  line-height: 1.6;
+  color: rgba(227, 217, 194, 0.9);
+}
+
+.locker-note {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  color: rgba(227, 217, 194, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .locker-bubble {
+    animation: none;
+    display: none;
+  }
 }
 
 /* ---- Fatal errors ---- */

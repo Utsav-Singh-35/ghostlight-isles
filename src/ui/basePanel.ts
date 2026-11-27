@@ -1,5 +1,6 @@
-import { BLOOD_MOON, COSTS, ECONOMY, WEAPONS, type Cost } from '../sim/balance';
+import { BLOOD_MOON, COSTS, CREW, ECONOMY, WEAPONS, type Cost } from '../sim/balance';
 import { fleetFor } from '../sim/bloodMoon';
+import { CREW_NAMES, CREW_ROLES, crewEffect, type CrewRole } from '../sim/crew';
 import { DEFENSE_NAMES, SHIP_PART_NAMES, SHIP_PARTS, defenseCost, homeUpgradeCost, shipUpgradeCost, slotsFor, spentOn, type ShipPart } from '../sim/base';
 import { canAfford, capsFor, describeCost } from '../sim/economy';
 import { TOWER_TYPES, type DefenseType, type PlacedDefense } from '../sim/layout';
@@ -13,6 +14,8 @@ export interface BasePanelHandlers {
   upgradeHome(): void;
   upgradeShip(part: ShipPart): void;
   cleanse(): void;
+  keepCrew(role: CrewRole): void;
+  hireCrew(role: CrewRole): void;
   close(): void;
 }
 
@@ -132,6 +135,8 @@ export class BasePanel {
       for (let slot = 0; slot < slots.mines; slot++) body.append(this.slotRow(profile, slot, true));
     } else {
       for (const part of SHIP_PARTS) body.append(this.partRow(profile, part));
+      body.append(el('h3', 'bp-section', 'Crew'));
+      for (const role of CREW_ROLES) body.append(this.crewRow(profile, role));
     }
 
     const close = el('button', 'ghost-button bp-close', 'Close (Tab)');
@@ -180,6 +185,21 @@ export class BasePanel {
       actions.append(this.button(`Build ${DEFENSE_NAMES[type]}: ${describeCost(cost)}`, ROLES[type], blocked, () => this.handlers.build(type, slot)));
     }
     row.append(actions);
+    return row;
+  }
+
+  private crewRow(profile: PublicProfile, role: CrewRole): HTMLElement {
+    const slot = profile.crew[role];
+    const row = el('div', 'bp-slot');
+    const state = slot.state === 'ghost' ? `a ghost, ${slot.battlesLeft} ${slot.battlesLeft === 1 ? 'battle' : 'battles'} left` : slot.state === 'living' ? 'alive' : 'gone';
+    row.append(el('div', 'bp-slot-name', `${CREW_NAMES[role]}: ${state}`), el('p', 'bp-role', crewEffect(role, slot.state)));
+    if (slot.state === 'ghost') {
+      const cost = CREW.keepGhostCost;
+      row.append(this.button(`Keep for ${CREW.ghostBattles} more battles: ${describeCost(cost)}`, 'Ghosts fade when their battles run out.', canAfford(profile.resources, cost) ? null : shortfall(profile, cost), () => this.handlers.keepCrew(role)));
+    } else if (slot.state === 'none') {
+      const cost = CREW.hireCost;
+      row.append(this.button(`Hire a new ${CREW_NAMES[role]}: ${describeCost(cost)}`, crewEffect(role, 'living'), canAfford(profile.resources, cost) ? null : shortfall(profile, cost), () => this.handlers.hireCrew(role)));
+    }
     return row;
   }
 

@@ -73,9 +73,10 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 
 Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 / 1,800 gold (+60 ecto) for 210 / 270 health; Cannons 600 / 1,500 gold; Salt Shot 300 + 30 ecto / 900 + 80 ecto; Witchfire Barrel unlock 400, then 800 / 1,600 gold; Bat Swarm unlock 60 ecto, then 120 / 240 ecto. A new captain starts with 600 gold, 30 ectoplasm, one Cannon Tower, cannons and Salt Shot at level 1.
 
-## Crew
-- You start with two: a **Gunner** (reloads 20% faster) and a **Navigator** (sees 30% further through fog).
-- A crew member who dies in battle returns as a **ghost** for 3 battles with a stronger ability (Gunner: shots pass through ghost hulls; Navigator: reveals mines). After that they fade unless you spend ectoplasm.
+## Crew (code)
+- You start with two: a **Gunner** (reloads 20% faster) and a **Navigator** (your lantern shows ghosts **30 m** off in the fog instead of 20 m).
+- When your ship sinks, one living crew member drowns and returns as a **ghost** for **3 battles** with a stronger ability. Ghost Gunner: reloads 35% faster and cannonballs hit ghosts at full strength. Ghost Navigator: shows ghosts 45 m off and every hidden mine.
+- Each battle uses up one of a ghost's battles; then the post is empty. Keep a ghost for 3 more battles for **40 ectoplasm**, or hire a new living crew member for an empty post for **150 gold** (shipwright, in the base panel).
 
 ## Capturing islands
 Each haunted island can be captured in one of two ways:
@@ -98,8 +99,11 @@ Each haunted island can be captured in one of two ways:
 - Ghost loot is cursed gold. It counts as gold for building and is spent first, but every 150 held adds a ship to the next fleet.
 - The chapel (base panel) takes all your cursed gold and returns it as plain gold after **10 minutes**.
 
-## Davy Jones' Locker
-- When your ship sinks, you wake on the seabed. Solve a Lantern Lines puzzle before the time runs out, or pay the Ferryman in ectoplasm, to sail back with your ship repaired.
+## Davy Jones' Locker (code)
+- When your ship sinks (in a fort battle, a raid or a siege), you wake on the seabed. While it lies there you can't capture, raid or fight a siege, and the ghost fleet leaves Last Light alone.
+- **Escape:** solve a Lantern Lines puzzle within **90 s** and you wash up beside Last Light with nothing lost. If time runs out or you give up, the sea takes **20% of your gold** (cursed gold first), and you still wash up.
+- **Pay the Ferryman:** **30 ectoplasm** and you go at once.
+- The server issues each escape puzzle as a single-use ticket and checks the answer itself.
 
 ## If we are ahead of schedule
 - **Possession:** a ghost crew member takes over one enemy tower per battle for 5 seconds.

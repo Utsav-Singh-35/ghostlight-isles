@@ -12,6 +12,8 @@ import { fortDifficulty, mineSlotPosition, slotPosition } from '../sim/layout';
 import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
 import { SidePanel, ago } from '../ui/sidePanel';
+import { LockerView } from '../ui/lockerView';
+import { CREW_NAMES } from '../sim/crew';
 import type { Resources } from '../sim/economy';
 import { bloodMoonAt, fleetCanSail, moonEndsAt, moonIsUp } from '../sim/bloodMoon';
 import type { PublicProfile } from '../sim/profile';
@@ -84,6 +86,7 @@ export class App {
   private readonly basePanel: BasePanel;
   private readonly side: SidePanel;
   private readonly fleetNotice: Notice;
+  private readonly locker: LockerView;
   /** How red the night is right now, easing toward the moon's state. */
   private bloodAmount = 0;
   /** When the ghost fleet reaches Last Light (local milliseconds), or null. */
@@ -147,9 +150,15 @@ export class App {
       upgradeHome: () => command('/base/home', {}, 'Last Light grows stronger'),
       upgradeShip: (part) => command('/ship/upgrade', { part }, `${SHIP_PART_NAMES[part]} refitted`),
       cleanse: () => command('/chapel/cleanse', {}, 'The chapel takes the cursed gold'),
+      keepCrew: (role) => command('/crew/keep', { role }, `Your ghost ${CREW_NAMES[role]} stays aboard`),
+      hireCrew: (role) => command('/crew/hire', { role }, `A new ${CREW_NAMES[role]} signs on`),
       close: () => this.toggleBase(false),
     });
     this.fleetNotice = createNotice(this.overlay, 'notice-fleet');
+    this.locker = new LockerView(this.overlay, this.renderer.renderer.domElement, {
+      escape: () => void this.escapeLocker(),
+      pay: () => void this.payFerryman(),
+    });
     this.keyboard.on('Tab', () => this.toggleBase());
     this.side = new SidePanel(this.overlay, 'Raids and the Captain’s Log', () => this.side.close());
     this.keyboard.on('KeyR', () => {
@@ -168,7 +177,7 @@ export class App {
     this.standardSea = options.seedText === WORLD.defaultSeed;
     for (const code of ['Digit1', 'Digit2', 'Digit3']) {
       this.keyboard.on(code, () => {
-        if (this.mode === 'sail' && !this.puzzle.visible && !this.results.visible) this.prompt.press(code);
+        if (this.mode === 'sail' && !this.puzzle.visible && !this.results.visible && !this.locker.visible) this.prompt.press(code);
       });
     }
     window.setInterval(() => void this.collectTribute(), 60_000);
@@ -234,12 +243,79 @@ export class App {
     this.labels.setCaptured(captured);
     this.renderer.setHomeDefenses(this.homeViews(profile));
     this.basePanel.update(profile, this.session?.now() ?? Date.now());
+    this.checkLocker();
+  }
+
+  /** Shows Davy Jones' Locker while the captain's ship lies on the seabed. */
+  private checkLocker(): void {
+    const sunk = this.session?.profile.sunk ?? false;
+    if (sunk && this.mode === 'sail' && !this.puzzle.visible && !this.results.visible) {
+      this.toggleBase(false);
+      this.side.close();
+      this.prompt.hide();
+      this.keyboard.sailLevel = 0;
+      this.keyboard.setEnabled(false);
+      this.locker.show(this.session!.profile.resources);
+    } else if (!sunk && this.locker.visible) {
+      this.locker.hide();
+      this.keyboard.setEnabled(true);
+    }
+  }
+
+  /** Puts a freed ship back beside Last Light. */
+  private washUp(): void {
+    this.previous = createWorldState(this.world);
+    this.current = this.previous;
+    this.keyboard.sailLevel = 0;
+    this.keyboard.setEnabled(true);
+    this.renderer.rig.snap();
+  }
+
+  private async escapeLocker(): Promise<void> {
+    const session = this.session;
+    if (!session) return;
+    await this.guarded(async () => {
+      const { ticket } = await session.request<{ ticket: { id: string; puzzleSeed: number; seconds: number } }>('POST', '/locker/escape');
+      this.locker.show(session.profile.resources, true);
+      const finish = async (orientation: Orientation[]) => {
+        await this.guarded(async () => {
+          const { outcome } = await session.request<{ outcome: { escaped: boolean; lost: number } }>('POST', '/locker/finish', { id: ticket.id, orientation });
+          this.locker.hide();
+          this.washUp();
+          this.results.show(
+            outcome.escaped
+              ? { title: 'You rise from the deep', tone: 'win', lines: ['The beam lit every totem and the Ferryman let you go.', 'You wash up beside Last Light with nothing lost.'], actions: [{ label: 'Back to the sea', primary: true, run: () => {} }] }
+              : { title: 'The sea took its toll', tone: 'loss', lines: [`You wash up beside Last Light, ${outcome.lost} gold lighter.`], actions: [{ label: 'Back to the sea', primary: true, run: () => {} }] },
+          );
+        });
+        this.checkLocker();
+      };
+      this.puzzle.open(generatePuzzle(ticket.puzzleSeed), {
+        title: "Escape Davy Jones' Locker",
+        subtitle: 'Light every totem before the deep keeps you.',
+        timeLimitSeconds: ticket.seconds,
+        onSolved: (o) => void finish(o),
+        onGiveUp: (o) => void finish(o),
+        onTimeout: (o) => void finish(o),
+      });
+    });
+  }
+
+  private async payFerryman(): Promise<void> {
+    const session = this.session;
+    if (!session) return;
+    await this.guarded(async () => {
+      await session.request('POST', '/locker/pay');
+      this.locker.hide();
+      this.washUp();
+      this.toasts.show('The Ferryman takes his fare and rows you back to Last Light.', 'good', 5);
+    });
   }
 
   /** Calls up a personal Blood Moon; the fleet arrives a few seconds later. */
   private async summon(): Promise<void> {
     const session = this.session;
-    if (!session || this.mode === 'battle') return;
+    if (!session || this.mode === 'battle' || this.locker.visible) return;
     if (!this.standardSea) {
       this.toasts.show('The ghost fleet only sails in the standard sea. Remove ?seed from the address.', 'bad', 6);
       return;
@@ -332,7 +408,7 @@ export class App {
   /** Lists islands to raid. */
   private async openRaids(): Promise<void> {
     const session = this.session;
-    if (!session || this.mode !== 'sail' || this.puzzle.visible || this.results.visible) return;
+    if (!session || this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.locker.visible) return;
     this.toggleBase(false);
     await this.guarded(async () => {
       const { targets } = await session.request<{ targets: RaidTarget[] }>('GET', '/raids/targets');
@@ -385,7 +461,7 @@ export class App {
   /** The Captain's Log: reports and the leaderboard. */
   private async openLog(tab: 'reports' | 'leaderboard'): Promise<void> {
     const session = this.session;
-    if (!session || this.mode !== 'sail') return;
+    if (!session || this.mode !== 'sail' || this.locker.visible) return;
     this.toggleBase(false);
     const tabs = [
       { id: 'reports', label: 'Reports' },
@@ -420,7 +496,7 @@ export class App {
   /** Opens or closes the base panel. The camera flies to Last Light while it is open. */
   toggleBase(open = !this.basePanel.visible): void {
     if (open) {
-      if (this.mode !== 'sail' || !this.session || this.puzzle.visible || this.results.visible) return;
+      if (this.mode !== 'sail' || !this.session || this.puzzle.visible || this.results.visible || this.locker.visible) return;
       this.side.close();
       this.keyboard.sailLevel = 0;
       this.keyboard.setEnabled(false);
@@ -484,7 +560,7 @@ export class App {
 
   /** Shows what the captain can do at the nearest island. */
   private updatePrompt(): void {
-    if (this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.basePanel.visible) {
+    if (this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.basePanel.visible || this.locker.visible) {
       this.prompt.hide();
       return;
     }
@@ -716,6 +792,7 @@ export class App {
     this.hud.setVisible(true);
     this.labels.setVisible(true);
     this.captainBar.setVisible(this.session !== null);
+    this.checkLocker();
   }
 
   /** Practice battles, for judges and for the title screen's shortcuts. */
@@ -798,7 +875,15 @@ export class App {
       captain: () => {
         const s = this.session;
         if (!s) return null;
-        return { name: s.profile.name, online: s.online, resources: { ...s.profile.resources }, captured: [...s.profile.captured], defenses: s.profile.defenses.length };
+        return {
+          name: s.profile.name,
+          online: s.online,
+          resources: { ...s.profile.resources },
+          captured: [...s.profile.captured],
+          defenses: s.profile.defenses.length,
+          sunk: s.profile.sunk,
+          crew: { gunner: s.profile.crew.gunner.state, navigator: s.profile.crew.navigator.state },
+        };
       },
     };
   }

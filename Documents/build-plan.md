@@ -12,7 +12,7 @@ Each feature gets its own spec in `.kiro/specs/`, passes its tests and the smoke
 - [x] **F5 Base building** (spec `base-building`): place and upgrade defenses on the home island, resources and storage. Mon Nov 30.
 - [x] **F6 Raids** (spec `raids`): raid saved islands, server replay check in a Netlify Function, raid reports, protection timer, leaderboard. Tue Dec 1.
 - [x] **F7 Ghost fleet** (spec `ghost-fleet`): the Blood Moon clock, ghost raids on the weakest island, cursed gold, Salt Shot and Spirit Lanterns. Tue Dec 1.
-- [ ] **F8 Davy Jones' Locker** (spec `davy-jones-locker`): sinking, the seabed escape puzzle, the Ferryman. Wed Dec 2.
+- [x] **F8 Davy Jones' Locker** (spec `davy-jones-locker`): sinking, the seabed escape puzzle, the Ferryman, ghost crew. Wed Dec 2.
 - [ ] **F9 Polish**: sound, effects, tutorial, balance, bug fixes, playtests with real people. Wed Dec 2 to Thu Dec 3.
 - [ ] **Submission**: README, blog post, social post, video, Devpost write-up. Thu Dec 3 to Fri Dec 4.
 

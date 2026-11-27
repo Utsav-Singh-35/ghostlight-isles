@@ -216,6 +216,50 @@ async function main() {
     await moon.screenshot({ path: join(SHOTS, '14-siege.png') });
     await moon.close();
 
+    // Sink in a raid, wake in Davy Jones' Locker and escape it.
+    const deep = await openGame(browser, base, '?skipIntro', errors);
+    await deep.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    await deep.keyboard.press('KeyR');
+    await deep.waitForSelector('.side-panel:not([hidden]) .sp-row', { timeout: 10000 });
+    const strongest = await deep.$$eval('.side-panel .sp-row .sp-row-detail', (rows) => {
+      let best = 0;
+      let bestCount = -1;
+      rows.forEach((row, i) => {
+        const count = Number(/(\d+) defense/.exec(row.textContent ?? '')?.[1] ?? 0);
+        if (count > bestCount) {
+          best = i;
+          bestCount = count;
+        }
+      });
+      return best;
+    });
+    await deep.locator('.side-panel .sp-row').nth(strongest).getByRole('button').click();
+    await deep.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 10000 });
+    await deep.keyboard.press('KeyW');
+    await deep.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 160000 }).catch(() => {});
+    const sankInRaid = await deep.evaluate(() => window.__ghostlight.battle()?.result?.shipSunk === true);
+    check(sankInRaid, 'sitting under the guns of a strong island sinks the ship');
+    await deep.getByRole('button', { name: 'Back to the sea' }).click();
+    await deep.waitForSelector('.locker:not([hidden])', { timeout: 10000 }).catch(() => {});
+    const crewAfter = await deep.evaluate(() => window.__ghostlight.captain());
+    check(await deep.locator('.locker').isVisible(), "a sunk ship wakes in Davy Jones' Locker");
+    check(crewAfter && (crewAfter.crew.gunner === 'ghost' || crewAfter.crew.navigator === 'ghost'), 'one drowned crew member comes back as a ghost');
+    await deep.screenshot({ path: join(SHOTS, '15-davy-jones-locker.png') });
+    await deep.keyboard.press('Digit1');
+    await deep.waitForTimeout(300);
+    const shut = !(await deep.locator('.base-panel').isVisible()) && !(await deep.locator('.context-prompt').isVisible());
+    check(shut, 'island actions stay shut while the ship lies in the Locker');
+    await deep.getByRole('button', { name: /Escape/ }).click();
+    await deep.waitForFunction(() => window.__ghostlight.puzzle() !== null, null, { timeout: 10000 }).catch(() => {});
+    for (const m of (await deep.evaluate(() => window.__ghostlight.puzzle())) ?? []) {
+      if (m.current !== m.solution) await deep.locator(`[data-cell="${m.cell}"]`).click();
+    }
+    await deep.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 10000 }).catch(() => {});
+    check(await deep.locator('.result-title').textContent().then((t) => t === 'You rise from the deep'), 'solving the escape frees the ship with nothing lost');
+    const freed = await deep.evaluate(() => window.__ghostlight.captain());
+    check(freed && freed.sunk === false, 'the server marks the ship afloat again');
+    await deep.close();
+
     // A fort battle: sail in at full sail, fire both broadsides, then retreat.
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);
     check((await fort.evaluate(() => window.__ghostlight.mode)) === 'battle', 'the fort scenario opens a battle');
