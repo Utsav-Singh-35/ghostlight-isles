@@ -16,7 +16,8 @@ export interface Hud {
 }
 
 export interface HudButton {
-  readonly label: string;
+  /** A fixed label, or a function for one that changes (read every frame). */
+  readonly label: string | (() => string);
   readonly title: string;
   readonly run: () => void;
 }
@@ -31,12 +32,14 @@ export function createHud(parent: HTMLElement, quality: 'high' | 'low', onToggle
   qualityButton.title = 'Switch graphics quality (reloads the page)';
   qualityButton.addEventListener('click', onToggleQuality);
   const right = el('div', 'hud-top-right');
+  const live: { button: HTMLElement; label: () => string }[] = [];
   for (const b of buttons) {
-    const button = el('button', 'hud-base', b.label);
+    const button = el('button', 'hud-base', typeof b.label === 'string' ? b.label : b.label());
     button.type = 'button';
     button.title = b.title;
     button.addEventListener('click', b.run);
     right.append(button);
+    if (typeof b.label === 'function') live.push({ button, label: b.label });
   }
   right.append(qualityButton);
   const top = el('div', 'hud-top');
@@ -67,6 +70,7 @@ export function createHud(parent: HTMLElement, quality: 'high' | 'low', onToggle
     ['A/D', 'Steer'],
     ['Drag', 'Look'],
     ['Scroll', 'Zoom'],
+    ['M', 'Sound'],
   ]) {
     const item = el('span', 'hud-key');
     item.append(el('kbd', undefined, key), document.createTextNode(` ${action}`));
@@ -84,6 +88,7 @@ export function createHud(parent: HTMLElement, quality: 'high' | 'low', onToggle
       setText(sailName, SAIL_NAMES[level] as string);
       pipEls.forEach((pip, i) => pip.classList.toggle('pip-on', i < level));
       setText(speedValue, (ship.speed * KNOTS_PER_MPS).toFixed(1));
+      for (const { button, label } of live) setText(button, label());
     },
     setVisible(visible) {
       root.classList.toggle('hud-hidden', !visible);

@@ -62,6 +62,8 @@ export function createLabels(parent: HTMLElement, world: World): Labels {
     },
     setVisible(value) {
       visible = value;
+      // Hide at once: battles don't call update(), so a label left showing would hang over the fight.
+      if (!value) for (const slot of pool) slot.label.hidden = true;
     },
     setCaptured(ids) {
       captured = new Set(ids);

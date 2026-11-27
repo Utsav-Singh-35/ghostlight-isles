@@ -1,4 +1,9 @@
-import { TICK_SECONDS, WORLD } from '../sim/balance';
+import { Sound } from '../audio/sound';
+import type { Effect } from '../audio/synth';
+import { SHIP, TICK_SECONDS, WORLD } from '../sim/balance';
+import { angleDelta } from '../sim/math';
+import { OrdersView } from '../ui/ordersView';
+import { ORDERS, currentOrder, observe, readDone, writeDone, type OrderId } from './orders';
 import type { BattleResult, BattleSetup, InputEvent, Loadout } from '../sim/battle';
 import { fortLayout } from '../sim/layout';
 import { hashSeed } from '../sim/rng';
@@ -62,6 +67,25 @@ export interface BattleTicket {
 export const PRACTICE_LOADOUT: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 1, bats: 1, gunner: 'living', navigator: 'living' };
 
 const SIEGE_FAST_FORWARD = 4;
+const ORDERS_KEY = 'ghostlight.orders';
+const ORDERS_HIDDEN_KEY = 'ghostlight.orders.hidden';
+
+/** Reads a saved setting; private windows may refuse storage. */
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // The setting then lasts for this visit only.
+  }
+}
 
 export class App {
   readonly world: World;
@@ -92,6 +116,17 @@ export class App {
   /** When the ghost fleet reaches Last Light (local milliseconds), or null. */
   private fleetEta: number | null = null;
   private readonly intro: Intro | null;
+  readonly sound = new Sound();
+  private readonly ordersView: OrdersView;
+  private ordersDone: Set<OrderId>;
+  private ordersHidden: boolean;
+  /** Orders carried out since the last frame (building, starting a siege or a raid). */
+  private ordersDid: OrderId[] = [];
+  /** True once the captain has loaded, so orders ticked from an old profile don't chime. */
+  private ordersPrimed = false;
+  /** Radians the ship has turned at sea this visit, for the steer order. */
+  private turned = 0;
+  private lastHeading: number | null = null;
   /** The signed-in captain, once the server (or offline save) has answered. */
   session: Session | null = null;
   private readonly loop: FixedLoop;
@@ -127,20 +162,25 @@ export class App {
       { label: 'Raid (R)', title: "Attack another captain's island while they're away", run: () => void this.openRaids() },
       { label: 'Log (L)', title: 'Reports and the leaderboard', run: () => void this.openLog('reports') },
       { label: 'Summon the Blood Moon', title: 'Call the ghost fleet to Last Light now instead of waiting for the shared Blood Moon', run: () => void this.summon() },
+      { label: () => (this.sound.enabled ? 'Sound: On' : 'Sound: Off'), title: 'Turn sound on or off (M)', run: () => this.toggleSound() },
     ]);
     this.labels = createLabels(this.overlay, this.world);
     this.aground = createNotice(this.overlay, 'notice-aground');
     this.slow = createNotice(this.overlay, 'notice-slow');
     this.battleHud = new BattleHud(this.overlay, () => this.keyboard.requestRetreat());
-    this.results = new ResultScreen(this.overlay);
+    this.results = new ResultScreen(this.overlay, (tone) => {
+      if (tone !== 'neutral') this.sound.play(tone);
+    });
     this.captainBar = new CaptainBar(this.overlay);
     this.notice = createNotice(this.overlay, 'notice-info');
     this.prompt = new ContextPrompt(this.overlay);
-    this.puzzle = new PuzzleView(this.overlay);
+    this.puzzle = new PuzzleView(this.overlay, (cue) => this.sound.play(cue));
     this.toasts = new Toasts(this.overlay);
-    const command = (path: string, body: Record<string, unknown>, done: string) =>
+    const command = (path: string, body: Record<string, unknown>, done: string, effect: Effect = 'build') =>
       void this.guarded(async () => {
         await this.session?.request('POST', path, body);
+        this.sound.play(effect);
+        if (path === '/base/build') this.ordersDid.push('build');
         this.toasts.show(done, 'good', 3);
       });
     this.basePanel = new BasePanel(this.overlay, {
@@ -149,9 +189,9 @@ export class App {
       remove: (type, slot) => command('/base/remove', { type, slot }, `${DEFENSE_NAMES[type]} removed`),
       upgradeHome: () => command('/base/home', {}, 'Last Light grows stronger'),
       upgradeShip: (part) => command('/ship/upgrade', { part }, `${SHIP_PART_NAMES[part]} refitted`),
-      cleanse: () => command('/chapel/cleanse', {}, 'The chapel takes the cursed gold'),
-      keepCrew: (role) => command('/crew/keep', { role }, `Your ghost ${CREW_NAMES[role]} stays aboard`),
-      hireCrew: (role) => command('/crew/hire', { role }, `A new ${CREW_NAMES[role]} signs on`),
+      cleanse: () => command('/chapel/cleanse', {}, 'The chapel takes the cursed gold', 'coin'),
+      keepCrew: (role) => command('/crew/keep', { role }, `Your ghost ${CREW_NAMES[role]} stays aboard`, 'lit'),
+      hireCrew: (role) => command('/crew/hire', { role }, `A new ${CREW_NAMES[role]} signs on`, 'coin'),
       close: () => this.toggleBase(false),
     });
     this.fleetNotice = createNotice(this.overlay, 'notice-fleet');
@@ -171,6 +211,13 @@ export class App {
       this.side.close();
       this.toggleBase(false);
     });
+    this.keyboard.on('KeyM', () => this.toggleSound());
+    this.overlay.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('button')) this.sound.play('click');
+    });
+    this.ordersHidden = readStorage(ORDERS_HIDDEN_KEY) === '1';
+    this.ordersDone = readDone(readStorage(ORDERS_KEY));
+    this.ordersView = new OrdersView(this.captainBar.column, ORDERS.length, () => this.hideOrders());
     window.setInterval(() => {
       if (this.session) this.captainBar.set(this.session.profile, this.session.online, this.session.now());
     }, 30_000);
@@ -324,6 +371,7 @@ export class App {
       await session.request('POST', '/ghosts/summon');
       this.toasts.show('The moon turns red. The ghost fleet is coming for Last Light!', 'bad', 5);
       this.fleetEta = Date.now() + 5000;
+      this.sound.play('bell');
     });
   }
 
@@ -354,7 +402,10 @@ export class App {
       return;
     }
     if (this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.busy) return;
-    if (this.fleetEta === null) this.fleetEta = Date.now() + 20_000;
+    if (this.fleetEta === null) {
+      this.fleetEta = Date.now() + 20_000;
+      this.sound.play('bell');
+    }
     const left = this.fleetEta - Date.now();
     this.captainBar.setMoon(`Blood Moon · the ghost fleet reaches Last Light in ${clock(left)}`, true);
     this.fleetNotice.show(`The ghost fleet sails for Last Light. It arrives in ${Math.max(0, Math.ceil(left / 1000))} s.`, {
@@ -374,6 +425,7 @@ export class App {
     this.side.close();
     await this.guarded(async () => {
       const { ticket } = await session.request<{ ticket: { id: string; setup: BattleSetup } }>('POST', '/ghosts/defend');
+      this.ordersDid.push('moon');
       this.startBattle({
         title: 'The ghost fleet comes for Last Light',
         objective: 'Sink every ghost before they put out the lighthouse. R loads Salt Shot.',
@@ -436,6 +488,7 @@ export class App {
     this.side.close();
     await this.guarded(async () => {
       const { ticket } = await session.request<{ ticket: { id: string; setup: BattleSetup; targetName: string } }>('POST', '/raids/start', { targetId });
+      this.ordersDid.push('raid');
       this.startBattle({
         title: `Raid on Captain ${ticket.targetName}`,
         objective: 'Destroy what you can. The lighthouse counts three times.',
@@ -537,7 +590,10 @@ export class App {
     if (!session || session.profile.captured.length === 0 || this.busy) return;
     try {
       const { gold } = await session.request<{ gold: number }>('POST', '/collect');
-      if (gold > 0) this.toasts.show(`+${gold} gold in tribute from your islands`, 'good');
+      if (gold > 0) {
+        this.sound.play('coin');
+        this.toasts.show(`+${gold} gold in tribute from your islands`, 'good');
+      }
     } catch {
       // Tribute waits for the next minute.
     }
@@ -601,6 +657,56 @@ export class App {
       `Fort strength ${level} of 3. Capture it for ${REWARDS.captureGold[level - 1]} gold and ${ECONOMY.tributePerMinute} gold a minute.`,
       actions,
     );
+  }
+
+  /** Ticks off the captain's orders from what happened this frame, and shows the next one. */
+  private updateOrders(): void {
+    if (this.ordersHidden || !this.standardSea || this.mode !== 'sail') {
+      this.ordersView.hide();
+      return;
+    }
+    const ship = this.current.ship;
+    if (this.lastHeading !== null) this.turned += Math.abs(angleDelta(this.lastHeading, ship.heading));
+    this.lastHeading = ship.heading;
+    const session = this.session;
+    const profile = session?.profile ?? null;
+    const island = this.nearbyIsland();
+    const nearHaunted = island !== null && island.kind === 'haunted' && profile !== null && !profile.captured.includes(island.id);
+    const next = observe(this.ordersDone, {
+      sailLevel: this.keyboard.sailLevel,
+      turned: this.turned,
+      nearHaunted,
+      did: this.ordersDid,
+      captain: profile
+        ? {
+            captured: profile.captured.length,
+            defenses: profile.defenses.length,
+            raidsWon: profile.stats.raidsWon,
+            ghostRaidsRepelled: profile.stats.ghostRaidsRepelled,
+            ghostShipsSunk: profile.stats.ghostShipsSunk,
+          }
+        : null,
+    });
+    this.ordersDid = [];
+    if (next.size !== this.ordersDone.size) {
+      this.ordersDone = next;
+      writeStorage(ORDERS_KEY, writeDone(next));
+      if (this.ordersPrimed) this.sound.play('order');
+    }
+    if (session) this.ordersPrimed = true;
+    const current = currentOrder(this.ordersDone);
+    if (current) this.ordersView.show(current.number, ORDERS.length, current.order.text, ORDERS.map((o) => this.ordersDone.has(o.id)));
+    else this.ordersView.finish(() => this.hideOrders());
+  }
+
+  private hideOrders(): void {
+    this.ordersHidden = true;
+    writeStorage(ORDERS_HIDDEN_KEY, '1');
+  }
+
+  private toggleSound(): void {
+    const on = this.sound.toggle();
+    this.toasts.show(on ? 'Sound on. Press M to turn it off.' : 'Sound off. Press M to turn it on.', 'neutral', 2.5);
   }
 
   /** Actions at Last Light. */
@@ -687,14 +793,19 @@ export class App {
     const runner = this.runner;
     if (this.mode === 'battle' && runner) {
       const ship = interpolateShip(runner.prev.player.ship, runner.current.player.ship, alpha);
+      const events = runner.takeEvents();
+      const blood = runner.current.setup.mode === 'siege' ? 1 : 0;
       this.renderer.render({
         ship,
         time: this.time,
         dt: frameSeconds,
         mode: 'battle',
-        bloodMoon: runner.current.setup.mode === 'siege' ? 1 : 0,
-        battle: { prev: runner.prev, current: runner.current, alpha, events: runner.takeEvents() },
+        bloodMoon: blood,
+        battle: { prev: runner.prev, current: runner.current, alpha, events },
       });
+      const right = this.renderer.screenRight();
+      this.sound.battle(events, { x: ship.x, z: ship.z, rightX: right.x, rightZ: right.z }, runner.current.setup.island.radius);
+      this.sound.frame({ dt: frameSeconds, speed: runner.current.player.sunk ? 0 : ship.speed / SHIP.maxSpeed, blood, underwater: false });
       const layer = this.renderer.battleLayer;
       if (layer) this.battleHud.update(runner.current, layer, this.renderer, this.keyboard.salt);
     } else {
@@ -710,11 +821,13 @@ export class App {
         bloodMoon: this.bloodAmount,
       });
       this.watchMoon(frameSeconds);
+      this.sound.frame({ dt: frameSeconds, speed: ship.speed / SHIP.maxSpeed, blood: this.bloodAmount, underwater: this.locker.visible });
       this.hud.update(ship, this.keyboard.sailLevel);
       this.labels.update(ship, this.renderer, this.renderer.labelAnchors);
       const stuck = this.mode === 'sail' && this.current.ship.sail > 0.1 ? isAground(this.world, this.current.ship) : null;
       this.aground.show(stuck ? `Aground on ${stuck.name}. Steer away with A or D.` : null);
       this.updatePrompt();
+      this.updateOrders();
     }
     this.watchFrameRate(frameSeconds);
     this.ready = true;
@@ -872,6 +985,8 @@ export class App {
       resultShowing: () => this.results.visible,
       puzzle: () => this.puzzle.debugState(),
       moon: () => ({ red: this.bloodAmount, fleetComing: this.fleetEta !== null }),
+      sound: () => this.sound.debug(),
+      orders: () => ({ visible: this.ordersView.visible, current: currentOrder(this.ordersDone)?.number ?? null, done: [...this.ordersDone] }),
       captain: () => {
         const s = this.session;
         if (!s) return null;

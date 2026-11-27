@@ -416,6 +416,8 @@ interface Target {
   readonly vx: number;
   readonly vz: number;
   readonly radius: number;
+  /** Extra broadside range against this target, metres (the keep). */
+  readonly reach: number;
 }
 
 function shipTarget(c: Combatant): Target {
@@ -428,11 +430,12 @@ function shipTarget(c: Combatant): Target {
     vx: Math.sin(s.heading) * s.speed,
     vz: Math.cos(s.heading) * s.speed,
     radius: BATTLE.shipHitRadius,
+    reach: 0,
   };
 }
 
 function structureTarget(s: Structure): Target {
-  return { id: s.id, cls: 'structure', x: s.x, z: s.z, vx: 0, vz: 0, radius: BATTLE.structureHitRadius };
+  return { id: s.id, cls: 'structure', x: s.x, z: s.z, vx: 0, vz: 0, radius: BATTLE.structureHitRadius, reach: s.type === 'keep' ? BATTLE.keepReach : 0 };
 }
 
 function nearest(targets: readonly Target[], x: number, z: number, accept: (t: Target, d: number) => boolean): Target | null {
@@ -532,7 +535,7 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
       const sx = Math.cos(s.heading) * sign;
       const sz = -Math.sin(s.heading) * sign;
       const target = nearest(candidates, s.x, s.z, (t, d) => {
-        if (d > WEAPONS.cannon.range) return false;
+        if (d > WEAPONS.cannon.range + t.reach) return false;
         if (d < 1e-6) return true;
         return ((t.x - s.x) * sx + (t.z - s.z) * sz) / d >= ARC_COS;
       });

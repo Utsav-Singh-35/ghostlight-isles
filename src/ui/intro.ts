@@ -32,6 +32,7 @@ export function createIntro(parent: HTMLElement, onStart: () => void, shortcuts:
     ['A / D', 'Steer'],
     ['Drag', 'Look around'],
     ['Scroll', 'Zoom'],
+    ['M', 'Sound on or off'],
   ]) {
     const item = el('li');
     item.append(el('kbd', undefined, key), el('span', undefined, action));

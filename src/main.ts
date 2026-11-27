@@ -89,6 +89,8 @@ function main(): void {
     captain: debug.captain,
     puzzle: debug.puzzle,
     moon: debug.moon,
+    sound: debug.sound,
+    orders: debug.orders,
   });
 }
 

@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { DEFENSES, GHOSTS, WEAPONS, WORLD } from './balance';
+import { BATTLE, DEFENSES, GHOSTS, WEAPONS, WORLD } from './balance';
 import {
   DEFAULT_INPUT,
   FLAG,
@@ -22,6 +22,8 @@ import { angleDelta, clamp } from './math';
 import { hashSeed } from './rng';
 import { collisionRadius, generateWorld } from './world';
 
+/** How far off a shore a captain may comfortably sail and still hit the keep, metres. */
+const KEEP_OFFSHORE = 16;
 const crew = fc.constantFrom<CrewState>('none', 'living', 'ghost');
 const defense = fc.record({
   type: fc.constantFrom<DefenseType>('cannonTower', 'spiritLantern', 'boneCatapult', 'mine'),
@@ -241,13 +243,15 @@ describe('combat spec: battle simulation', () => {
 
   // Feature: combat, Property 9. Validates: Requirements 1.1, 3.2, 4.3
   it('Property 9: every keep is within reach', () => {
-    const islandRadius = fc.double({ noNaN: true, noDefaultInfinity: true, min: WORLD.minIslandRadius, max: WORLD.maxIslandRadius });
+    // Raided home islands are as big as Last Light, so cover them too.
+    const islandRadius = fc.double({ noNaN: true, noDefaultInfinity: true, min: WORLD.minIslandRadius, max: Math.max(WORLD.maxIslandRadius, WORLD.homeIslandRadius) });
+    const offshore = fc.double({ noNaN: true, noDefaultInfinity: true, min: 0, max: KEEP_OFFSHORE });
     fc.assert(
-      fc.property(islandRadius, (radius) => {
+      fc.property(islandRadius, offshore, (radius, off) => {
         const shore = collisionRadius({ id: 0, name: '', kind: 'haunted', x: 0, z: 0, radius, seed: 0 });
-        // A ship touching the shore can hit the keep at the centre...
-        expect(WEAPONS.cannon.range).toBeGreaterThanOrEqual(shore);
-        // ...and every tower slot, which stands closer to the shore than the keep.
+        // A ship sailing up to KEEP_OFFSHORE metres off the shore can hit the keep at the centre...
+        expect(WEAPONS.cannon.range + BATTLE.keepReach).toBeGreaterThanOrEqual(shore + off);
+        // ...and a ship at the shore can hit every tower slot, which stands closer to the shore than the keep.
         expect(WEAPONS.cannon.range).toBeGreaterThanOrEqual(shore - radius * 0.6);
       }),
       { numRuns: 200 },

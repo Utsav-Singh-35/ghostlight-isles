@@ -134,7 +134,15 @@ async function main() {
     // Capture the first haunted island by solving its Lantern Lines, in the standard sea.
     const cap = await openGame(browser, base, '?skipIntro', errors);
     await cap.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    await sleep(300);
+    const firstOrder = await cap.evaluate(() => window.__ghostlight.orders());
+    const orderTitle = await cap.locator('.orders-title').textContent().catch(() => '');
+    check(firstOrder.visible && firstOrder.current === 1 && /1 of 7/.test(orderTitle ?? ''), `a new captain sees the first of the captain's orders (${orderTitle})`);
+    check((await cap.evaluate(() => window.__ghostlight.sound().state)) === 'waiting', 'no audio starts before the first key press');
     await cap.keyboard.press('KeyW');
+    await sleep(400);
+    check((await cap.evaluate(() => window.__ghostlight.orders().current)) === 2, 'raising the sails ticks off the first order');
+    check((await cap.evaluate(() => window.__ghostlight.sound().state)) === 'running', 'the first key press starts the audio');
     const prompted = await cap
       .waitForFunction(() => /haunted/.test(document.querySelector('.context-prompt:not([hidden]) .cp-title')?.textContent ?? ''), null, { timeout: 30000 })
       .then(() => true)
@@ -157,6 +165,14 @@ async function main() {
     await cap.getByRole('button', { name: 'Back to the sea' }).click();
     await sleep(1500);
     await cap.screenshot({ path: join(SHOTS, '09-warm-island.png') });
+    const ordersAfter = await cap.evaluate(() => window.__ghostlight.orders());
+    check(ordersAfter.done.includes('island') && ordersAfter.done.includes('capture'), `the capture ticks off its orders (${ordersAfter.done.join(', ')})`);
+    await cap.keyboard.press('KeyM');
+    const muted = await cap.evaluate(() => window.__ghostlight.sound());
+    const soundLabel = await cap.getByRole('button', { name: /^Sound:/ }).textContent();
+    check(!muted.enabled && soundLabel === 'Sound: Off', `M turns the sound off and the HUD says so (${soundLabel})`);
+    await cap.getByRole('button', { name: /^Sound:/ }).click();
+    check((await cap.evaluate(() => window.__ghostlight.sound().enabled)) === true, 'the HUD button turns it back on');
     await cap.close();
 
     // Build a Spirit Lantern on Last Light from the base panel.
@@ -213,6 +229,8 @@ async function main() {
     await sleep(10000);
     const siegeState = await moon.evaluate(() => window.__ghostlight.battle());
     check(siegeState && siegeState.mode === 'siege' && siegeState.ghosts > 0, `the fleet arrives and the siege of Last Light begins (${siegeState?.ghosts ?? 0} ghosts afloat)`);
+    const strayLabels = await moon.locator('.island-label:not([hidden])').count();
+    check(strayLabels === 0, `no island labels hang over the battle (${strayLabels} showing)`);
     await moon.screenshot({ path: join(SHOTS, '14-siege.png') });
     await moon.close();
 
@@ -279,6 +297,8 @@ async function main() {
     check(fortBattle && fortBattle.tick > 400, `the fort battle runs (${fortBattle?.tick} ticks)`);
     check(fortBattle && fortBattle.shotsFired >= 2, `the player's inputs are recorded for replay (${fortBattle?.shotsFired} changes)`);
     check(fortStats.drawCalls <= BUDGET.drawCalls, `Fort battle: ${fortStats.drawCalls} draw calls (budget ${BUDGET.drawCalls})`);
+    const heard = await fort.evaluate(() => window.__ghostlight.sound());
+    check(heard.state === 'running' && heard.cues > 0, `the battle is heard: audio ${heard.state}, ${heard.cues} sounds started`);
     await fort.getByRole('button', { name: 'Retreat' }).click();
     await fort.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 10000 }).catch(() => {});
     check(await fort.evaluate(() => window.__ghostlight.resultShowing()), 'retreating ends the battle with a result card');

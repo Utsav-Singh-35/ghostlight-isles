@@ -34,7 +34,11 @@ export class PuzzleView {
     return c.puzzle.cells.flatMap((kind, i) => (kind === 'mirror' ? [{ cell: i, current: c.orientation[i]!, solution: c.puzzle.solution[i]! }] : []));
   }
 
-  constructor(parent: HTMLElement) {
+  /** `onCue` hears every mirror turned, every newly lit totem and the solve, for sound. */
+  constructor(
+    parent: HTMLElement,
+    private readonly onCue: (cue: 'turn' | 'lit' | 'solved') => void = () => {},
+  ) {
     this.root = el('div', 'puzzle');
     this.root.hidden = true;
     this.root.setAttribute('role', 'dialog');
@@ -51,6 +55,8 @@ export class PuzzleView {
     const orientation: Orientation[] = puzzle.start.slice();
     const totems = totemsOf(puzzle);
     let done = false;
+    /** Totems lit at the last redraw, or -1 before the first. */
+    let litBefore = -1;
     this.current = { puzzle, orientation };
 
     const card = el('div', 'puzzle-card');
@@ -114,6 +120,7 @@ export class PuzzleView {
         const turn = () => {
           if (done) return;
           orientation[i] = orientation[i] === 1 ? 0 : 1;
+          this.onCue('turn');
           redraw();
         };
         g.addEventListener('click', turn);
@@ -155,8 +162,12 @@ export class PuzzleView {
       const lit = new Set(t.lit);
       for (const [i, node] of totemNodes) node.classList.toggle('pz-lit', lit.has(i));
       setText(status, `${lit.size} of ${totems.length} totems lit${t.blocked ? ' · the beam hits a rock' : ''}`);
-      if (!done && isSolved(puzzle, orientation)) {
+      const solved = !done && isSolved(puzzle, orientation);
+      if (!solved && litBefore >= 0 && lit.size > litBefore) this.onCue('lit');
+      litBefore = lit.size;
+      if (solved) {
         done = true;
+        this.onCue('solved');
         card.classList.add('puzzle-solved');
         setText(status, 'Every totem is lit!');
         window.setTimeout(() => {

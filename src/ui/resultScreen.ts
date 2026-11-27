@@ -20,7 +20,11 @@ export interface ResultInfo {
 export class ResultScreen {
   private readonly root: HTMLElement;
 
-  constructor(private readonly parent: HTMLElement) {
+  /** `onShow` hears each card's tone as it appears, for sound. */
+  constructor(
+    private readonly parent: HTMLElement,
+    private readonly onShow: (tone: ResultInfo['tone']) => void = () => {},
+  ) {
     this.root = el('div', 'result');
     this.root.hidden = true;
     this.root.setAttribute('role', 'dialog');
@@ -59,6 +63,7 @@ export class ResultScreen {
     card.append(buttons);
     this.root.replaceChildren(card);
     this.root.hidden = false;
+    this.onShow(info.tone);
     first?.focus({ preventScroll: true });
   }
 

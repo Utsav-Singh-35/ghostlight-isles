@@ -124,6 +124,11 @@ export const BATTLE = {
   mineSightRadius: 18,
   /** The keep counts this many times an ordinary structure toward destruction. */
   keepWeight: 3,
+  /**
+   * Broadsides reach the keep, a tall light at the island's heart, this much further than other
+   * targets, metres. Without it a ship had to scrape the shore of a big island to hit the keep.
+   */
+  keepReach: 14,
   /** Broadsides auto-aim inside this angle either side of the beam, radians (55°). */
   firingArc: (55 * Math.PI) / 180,
   /** Safety cap on shots in flight. */

@@ -49,6 +49,11 @@ export class CaptainBar {
     this.root.hidden = !visible;
   }
 
+  /** The column under the captain's details, for panels that should hide with it (the captain's orders). */
+  get column(): HTMLElement {
+    return this.root;
+  }
+
   /** The Blood Moon clock, in words. */
   setMoon(text: string, urgent: boolean): void {
     setText(this.moon, text);

@@ -29,7 +29,7 @@ Structures stand on a ring of slots at 60% of the island's radius; mines float o
 ## Rules per tick
 1. Retreat ends an assault.
 2. The player's ship and every ghost ship step with `stepShip` (ghosts use their own speed table, halved while slowed) and `resolveCollisions` against the arena.
-3. Player weapons fire if held and ready. Broadsides auto-aim at the nearest hostile target in range and inside a 55° arc either side of the beam, leading moving ships.
+3. Player weapons fire if held and ready. Broadsides auto-aim at the nearest hostile target in range and inside a 55° arc either side of the beam, leading moving ships. The keep counts as in range from `BATTLE.keepReach` further out, because it stands at the heart of the island.
 4. Each standing defense with a target in range fires. Cannon Towers and Spirit Lanterns lead moving ships; catapults do not.
 5. Ghost ships fire at the nearest structure or player ship in range.
 6. Shots land when their flight time ends. A single-target shot hits the nearest hostile entity whose hit circle contains the landing point; an area shot hits every hostile entity in its radius. Damage = base damage × the multiplier for the shot type against the target class.
@@ -73,7 +73,7 @@ Structures stand on a ring of slots at 60% of the island's radius; mines float o
 **Property 8: Malformed inputs are harmless.** *For any* list of arbitrary input events (non-finite, out of order, out of range), `runBattle` finishes and gives the same result as running the sanitized list.
 **Validates: Requirement 5.3**
 
-**Property 9: Every keep is within reach.** *For any* island radius the world can generate, a ship touching the shore can reach the keep at the centre with its broadside, and ghosts circling Last Light can reach its keep. (Added after the scripted fort attack showed keeps out of range.)
+**Property 9: Every keep is within reach.** *For any* island radius the world can generate, haunted or home, a ship sailing up to 16 m off the shore can reach the keep at the centre with its broadside, a ship at the shore can reach every tower slot, and ghosts circling Last Light can reach its keep. (Added after the scripted fort attack showed keeps out of range. Widened in the balance pass, when the autopilot sank every tower on Bonefire Isle but could not reach its keep: broadsides now reach the keep `BATTLE.keepReach` further than other targets.)
 **Validates: Requirements 1.1, 3.2, 4.3**
 
 ## Testing strategy

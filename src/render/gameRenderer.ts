@@ -341,6 +341,16 @@ export class GameRenderer {
     this.hemisphere.color.copy(mix.sky);
   }
 
+  /** The screen's right-hand direction on the sea plane, as a unit vector, for stereo sound. */
+  screenRight(): { x: number; z: number } {
+    // The first column of the camera's world matrix is its local X axis in world space.
+    const e = this.rig.camera.matrixWorld.elements;
+    const x = e[0]!;
+    const z = e[2]!;
+    const length = Math.hypot(x, z);
+    return length > 1e-6 ? { x: x / length, z: z / length } : { x: 1, z: 0 };
+  }
+
   /** Where a world position lands on screen, in CSS pixels. */
   project(position: THREE.Vector3, out: ScreenPoint): ScreenPoint {
     this.projected.copy(position).project(this.rig.camera);

@@ -50,7 +50,7 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 ## Battles (code)
 - One deterministic simulation runs every fight in a 240 m arena around the island, for up to **150 s**.
 - **Assault** (fort captures and raids): your ship against the island's defenses. **Siege** (ghost raids): ghost ships against your island; your towers and your ship fight back.
-- Broadsides: Q fires port, E fires starboard. **3 / 4 / 5** shots per side by cannon level, **14 / 17 / 21** damage each, range **64 m**, reload **2 s** (Gunner: ×0.8, ghost Gunner: ×0.65). Broadsides aim themselves at the nearest target within 55° of the beam.
+- Broadsides: Q fires port, E fires starboard. **3 / 4 / 5** shots per side by cannon level, **14 / 17 / 21** damage each, range **64 m** (**78 m** against the keep, which stands at the island's heart), reload **2 s** (Gunner: ×0.8, ghost Gunner: ×0.65). Broadsides aim themselves at the nearest target within 55° of the beam.
 - R swaps cannonballs and Salt Shot. F throws a Witchfire Barrel (burns for 6 s, 9 s cooldown). B sends the Bat Swarm (reveals everything for 6 to 10 s, 25 s cooldown).
 - Towers: Cannon Tower **6 / 9 / 13** damage, range 70 m; Spirit Lantern **9 / 12 / 16**, range 60 m; Bone Catapult **22 / 28 / 36** splash, range 96 m, doesn't lead its target. Mines: **30 / 40 / 52** damage when a hostile ship comes within 7 m.
 - Ghost ships: **55 to 150** health and **7 to 15** damage by fleet level, range 66 m. They circle the island 8 m outside its shore.

@@ -1328,6 +1328,108 @@ kbd {
   }
 }
 
+/* ---- Captain's orders (the tutorial) ---- */
+.orders {
+  width: min(19rem, calc(100vw - 2.4rem));
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.8rem 0.65rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  background: var(--panel);
+  text-shadow: none;
+}
+
+.orders[hidden] {
+  display: none;
+}
+
+.orders-fresh {
+  animation: orders-flash 1.2s ease;
+}
+
+@keyframes orders-flash {
+  from {
+    border-color: rgba(255, 179, 71, 0.95);
+    box-shadow: 0 0 22px rgba(255, 179, 71, 0.45);
+  }
+  to {
+    border-color: var(--panel-edge);
+    box-shadow: none;
+  }
+}
+
+.orders-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.orders-title {
+  font: 400 0.95rem var(--title-font);
+  color: var(--lantern);
+}
+
+.orders-hide {
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  font: 0.75rem var(--ui-font);
+  color: rgba(227, 217, 194, 0.6);
+  background: none;
+  cursor: pointer;
+}
+
+.orders-hide:hover,
+.orders-hide:focus-visible {
+  outline: none;
+  color: var(--bone);
+  text-decoration: underline;
+}
+
+.orders-text {
+  margin: 0.3rem 0 0.5rem;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--bone);
+}
+
+.orders-marks {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.orders-mark {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 1px solid rgba(255, 179, 71, 0.45);
+  border-radius: 50%;
+}
+
+/* Done marks are filled; the current one is a thicker, pulsing ring. Shape tells them apart, not just color. */
+.orders-mark-done {
+  border-color: var(--lantern);
+  background: var(--lantern);
+  box-shadow: 0 0 6px rgba(255, 179, 71, 0.7);
+}
+
+.orders-mark-now {
+  border: 2px solid var(--lantern);
+  animation: orders-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes orders-pulse {
+  50% {
+    box-shadow: 0 0 9px rgba(255, 179, 71, 0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orders-fresh,
+  .orders-mark-now {
+    animation: none;
+  }
+}
+
 /* ---- Fatal errors ---- */
 .fatal {
   max-width: 32rem;

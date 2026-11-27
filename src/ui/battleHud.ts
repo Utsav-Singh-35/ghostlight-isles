@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TICK_SECONDS, WEAPONS } from '../sim/balance';
-import { isRevealed, reloadTicks, secondsToTicks, timeLeft, type BattleState } from '../sim/battle';
+import { isRevealed, reloadTicks, revealRadius, secondsToTicks, timeLeft, type BattleState } from '../sim/battle';
 import type { BattleLayer } from '../render/battleLayer';
 import { el, setText } from './dom';
 import type { Projector } from './labels';
@@ -148,7 +148,8 @@ export class BattleHud {
     // Tips that explain the two threats as they come up.
     let tip = '';
     if (p.sunk) tip = 'Your ship sank. The towers fight on without you.';
-    else if (!assault && state.ghosts.some((g) => !g.sunk && !isRevealed(state, g))) tip = 'Faint ghosts are veiled in the fog. Spirit Lanterns, your lantern and the Bat Swarm reveal them.';
+    else if (!assault && state.ghosts.some((g) => !g.sunk && !isRevealed(state, g)))
+      tip = `Faint ghosts hide in the fog, where your guns can't aim at them. Sail within ${revealRadius(loadout)} m to light them with your lantern; Spirit Lanterns and the Bat Swarm reveal them too.`;
     else if (!assault && !saltLoaded && loadout.salt) tip = 'Ghosts shrug off cannonballs. Press R for Salt Shot.';
     else if (assault && saltLoaded) tip = 'Salt Shot is weak against towers. Press R for cannonballs.';
     setText(this.tip, tip);
