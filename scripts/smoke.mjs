@@ -157,6 +157,23 @@ async function main() {
     await cap.screenshot({ path: join(SHOTS, '09-warm-island.png') });
     await cap.close();
 
+    // Build a Spirit Lantern on Last Light from the base panel.
+    const basePage = await openGame(browser, base, '?skipIntro', errors);
+    await basePage.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    await basePage.keyboard.press('Tab');
+    const panelOpen = await basePage.locator('.base-panel').isVisible();
+    check(panelOpen, 'Tab opens the base panel');
+    await basePage.locator('.bp-slot').nth(1).getByRole('button', { name: /Build Spirit Lantern/ }).click();
+    await basePage.waitForFunction(() => window.__ghostlight.captain()?.defenses === 2, null, { timeout: 10000 }).catch(() => {});
+    const builder = await basePage.evaluate(() => window.__ghostlight.captain());
+    check(builder && builder.defenses === 2, 'building a Spirit Lantern adds it to the base');
+    check(builder && builder.resources.gold === 450 && builder.resources.ectoplasm === 10, `the server charges exactly 150 gold and 20 ectoplasm (${builder?.resources.gold} gold, ${builder?.resources.ectoplasm} ectoplasm left)`);
+    await sleep(2500);
+    await basePage.screenshot({ path: join(SHOTS, '10-base.png') });
+    await basePage.keyboard.press('Tab');
+    check(!(await basePage.locator('.base-panel').isVisible()), 'Tab closes the base panel again');
+    await basePage.close();
+
     // A fort battle: sail in at full sail, fire both broadsides, then retreat.
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);
     check((await fort.evaluate(() => window.__ghostlight.mode)) === 'battle', 'the fort scenario opens a battle');

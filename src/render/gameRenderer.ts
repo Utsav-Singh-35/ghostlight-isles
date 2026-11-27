@@ -216,9 +216,14 @@ export class GameRenderer {
     return this.battle !== null;
   }
 
-  /** Draws the player's defenses on Last Light. Positions are in world space. */
+  /** Draws the player's defenses on Last Light. */
   setHomeDefenses(views: readonly StructureView[]): void {
     this.homeDefenses.set(views);
+  }
+
+  /** Terrain height on an island in the open sea. */
+  groundAt(islandId: number, x: number, z: number): number {
+    return this.islands.groundAt(islandId, x, z);
   }
 
   /** Captured islands burn warm lanterns and lose their ghost lights. */

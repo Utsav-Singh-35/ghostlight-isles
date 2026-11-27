@@ -39,6 +39,8 @@ export interface IslandScene {
   readonly drawCalls: number;
   /** Lights captured islands' lantern glass warm instead of green. */
   setCaptured(ids: ReadonlySet<number>): void;
+  /** Terrain height at a world position on an island, or 1 if off the island. */
+  groundAt(islandId: number, x: number, z: number): number;
   dispose(): void;
 }
 
@@ -285,6 +287,7 @@ export function createIslands(world: World): IslandScene {
   const raycaster = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
   const origin = new THREE.Vector3();
+  const terrains = new Map<number, THREE.Mesh>();
 
   for (const island of world.islands) {
     const rng = createRng(island.seed);
@@ -295,6 +298,7 @@ export function createIslands(world: World): IslandScene {
     terrain.name = `island-${island.id}`;
     terrain.updateMatrixWorld();
     group.add(terrain);
+    terrains.set(island.id, terrain);
     disposables.push(geometry);
     labelAnchors[island.id] = new THREE.Vector3(island.x, peak + (home ? 16 : 7), island.z);
 
@@ -434,6 +438,13 @@ export function createIslands(world: World): IslandScene {
         glassMesh.setColorAt(i, island !== undefined && ids.has(island) ? lanternColor : original);
       });
       if (glassMesh.instanceColor) glassMesh.instanceColor.needsUpdate = true;
+    },
+    groundAt(islandId, x, z) {
+      const terrain = terrains.get(islandId);
+      if (!terrain) return 1;
+      raycaster.set(origin.set(x, 200, z), down);
+      const hit = raycaster.intersectObject(terrain, false)[0];
+      return hit ? hit.point.y - 0.05 : 1;
     },
     dispose() {
       for (const item of disposables) item.dispose();

@@ -15,8 +15,14 @@ export interface Hud {
   setVisible(visible: boolean): void;
 }
 
+export interface HudButton {
+  readonly label: string;
+  readonly title: string;
+  readonly run: () => void;
+}
+
 /** Bearing, sail setting, speed and the controls. */
-export function createHud(parent: HTMLElement, quality: 'high' | 'low', onToggleQuality: () => void): Hud {
+export function createHud(parent: HTMLElement, quality: 'high' | 'low', onToggleQuality: () => void, buttons: readonly HudButton[] = []): Hud {
   const root = el('div', 'hud hud-hidden');
 
   const brand = el('div', 'hud-brand', 'Ghostlight Isles');
@@ -24,8 +30,17 @@ export function createHud(parent: HTMLElement, quality: 'high' | 'low', onToggle
   qualityButton.type = 'button';
   qualityButton.title = 'Switch graphics quality (reloads the page)';
   qualityButton.addEventListener('click', onToggleQuality);
+  const right = el('div', 'hud-top-right');
+  for (const b of buttons) {
+    const button = el('button', 'hud-base', b.label);
+    button.type = 'button';
+    button.title = b.title;
+    button.addEventListener('click', b.run);
+    right.append(button);
+  }
+  right.append(qualityButton);
   const top = el('div', 'hud-top');
-  top.append(brand, qualityButton);
+  top.append(brand, right);
 
   const panel = el('div', 'hud-panel');
   const bearing = el('div', 'hud-bearing');

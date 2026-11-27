@@ -57,6 +57,22 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 - Ghosts are **veiled** in fog: only Spirit Lanterns can aim at them, unless a lantern, your ship's lantern (20 m, 30 m with a Navigator, 45 m with a ghost Navigator) or the Bat Swarm reveals them.
 - Scoring: destruction counts every structure once and the keep three times. One star for 50%, one for the keep, one for 100%.
 
+## Base building (code)
+| Home level | Tower slots | Mine slots | Gold storage | Ectoplasm storage | Upgrade cost |
+|---|---|---|---|---|---|
+| 1 | 6 | 3 | 3,000 | 300 | (start) |
+| 2 | 9 | 4 | 7,000 | 700 | 1,500 gold |
+| 3 | 12 | 5 | 15,000 | 1,500 | 4,000 gold, 120 ectoplasm |
+
+| Defense | Build | Level 2 | Level 3 | Needs home level |
+|---|---|---|---|---|
+| Cannon Tower | 200 gold | 450 gold | 900 gold | 1 |
+| Spirit Lantern | 150 gold, 20 ecto | 350 gold, 40 ecto | 700 gold, 90 ecto | 1 |
+| Bone Catapult | 450 gold | 900 gold | 1,700 gold | 2 |
+| Jack-o'-lantern Mine | 100 gold | 220 gold | 450 gold | 1 |
+
+Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 / 1,800 gold (+60 ecto) for 210 / 270 health; Cannons 600 / 1,500 gold; Salt Shot 300 + 30 ecto / 900 + 80 ecto; Witchfire Barrel unlock 400, then 800 / 1,600 gold; Bat Swarm unlock 60 ecto, then 120 / 240 ecto. A new captain starts with 600 gold, 30 ectoplasm, one Cannon Tower, cannons and Salt Shot at level 1.
+
 ## Crew
 - You start with two: a **Gunner** (reloads 20% faster) and a **Navigator** (sees 30% further through fog).
 - A crew member who dies in battle returns as a **ghost** for 3 battles with a stronger ability (Gunner: shots pass through ghost hulls; Navigator: reveals mines). After that they fade unless you spend ectoplasm.

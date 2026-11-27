@@ -7,7 +7,10 @@ import { createWorldState, generateWorld, isAground, stepWorld, type World, type
 import { ApiError } from '../net/backend';
 import { Session } from '../net/session';
 import { ECONOMY, REWARDS } from '../sim/balance';
-import { fortDifficulty } from '../sim/layout';
+import { DEFENSE_NAMES, SHIP_PART_NAMES, slotsFor } from '../sim/base';
+import { fortDifficulty, mineSlotPosition, slotPosition } from '../sim/layout';
+import type { StructureView } from '../render/structureMeshes';
+import { BasePanel } from '../ui/basePanel';
 import type { PublicProfile } from '../sim/profile';
 import { generatePuzzle, type Orientation } from '../sim/puzzle';
 import type { Island } from '../sim/world';
@@ -73,6 +76,7 @@ export class App {
   private readonly standardSea: boolean;
   /** True while a request to the server is in flight, so keys can't start two things at once. */
   private busy = false;
+  private readonly basePanel: BasePanel;
   private readonly intro: Intro | null;
   /** The signed-in captain, once the server (or offline save) has answered. */
   session: Session | null = null;
@@ -104,7 +108,9 @@ export class App {
 
     this.overlay = el('div', 'overlay');
     root.append(this.overlay);
-    this.hud = createHud(this.overlay, options.quality, onSwitchQuality);
+    this.hud = createHud(this.overlay, options.quality, onSwitchQuality, [
+      { label: 'Base (Tab)', title: 'Build defenses on Last Light and refit your ship', run: () => this.toggleBase() },
+    ]);
     this.labels = createLabels(this.overlay, this.world);
     this.aground = createNotice(this.overlay, 'notice-aground');
     this.slow = createNotice(this.overlay, 'notice-slow');
@@ -115,6 +121,20 @@ export class App {
     this.prompt = new ContextPrompt(this.overlay);
     this.puzzle = new PuzzleView(this.overlay);
     this.toasts = new Toasts(this.overlay);
+    const command = (path: string, body: Record<string, unknown>, done: string) =>
+      void this.guarded(async () => {
+        await this.session?.request('POST', path, body);
+        this.toasts.show(done, 'good', 3);
+      });
+    this.basePanel = new BasePanel(this.overlay, {
+      build: (type, slot) => command('/base/build', { type, slot }, `${DEFENSE_NAMES[type]} built`),
+      upgrade: (type, slot) => command('/base/upgrade', { type, slot }, `${DEFENSE_NAMES[type]} upgraded`),
+      remove: (type, slot) => command('/base/remove', { type, slot }, `${DEFENSE_NAMES[type]} removed`),
+      upgradeHome: () => command('/base/home', {}, 'Last Light grows stronger'),
+      upgradeShip: (part) => command('/ship/upgrade', { part }, `${SHIP_PART_NAMES[part]} refitted`),
+      close: () => this.toggleBase(false),
+    });
+    this.keyboard.on('Tab', () => this.toggleBase());
     this.standardSea = options.seedText === WORLD.defaultSeed;
     for (const code of ['Digit1', 'Digit2', 'Digit3']) {
       this.keyboard.on(code, () => {
@@ -176,6 +196,39 @@ export class App {
     const captured = this.standardSea ? profile.captured : [];
     this.renderer.setCapturedIslands(captured);
     this.labels.setCaptured(captured);
+    this.renderer.setHomeDefenses(this.homeViews(profile));
+    this.basePanel.update(profile);
+  }
+
+  /** The captain's defenses as they stand on Last Light in the open sea. */
+  private homeViews(profile: PublicProfile): StructureView[] {
+    const home = this.world.islands[0]!;
+    const slots = slotsFor(profile.homeLevel);
+    return profile.defenses.map((d) => {
+      const mine = d.type === 'mine';
+      const p = mine ? mineSlotPosition(home.radius, d.slot, slots.mines) : slotPosition(home.radius, d.slot, slots.towers);
+      const x = home.x + p.x;
+      const z = home.z + p.z;
+      return { type: d.type, level: d.level, x, y: mine ? -0.15 : this.renderer.groundAt(home.id, x, z), z, facing: Math.atan2(p.x, p.z), destroyed: false, visible: true };
+    });
+  }
+
+  /** Opens or closes the base panel. The camera flies to Last Light while it is open. */
+  toggleBase(open = !this.basePanel.visible): void {
+    if (open) {
+      if (this.mode !== 'sail' || !this.session || this.puzzle.visible || this.results.visible) return;
+      this.keyboard.sailLevel = 0;
+      this.keyboard.setEnabled(false);
+      this.prompt.hide();
+      this.labels.setVisible(false);
+      this.renderer.rig.setView(0.75, 70);
+      this.basePanel.open(this.session.profile);
+    } else if (this.basePanel.visible) {
+      this.basePanel.close();
+      this.keyboard.setEnabled(true);
+      this.labels.setVisible(true);
+      this.renderer.rig.setView(0.3, 30);
+    }
   }
 
   /** A message that is safe to show for a failed request. */
@@ -226,7 +279,7 @@ export class App {
 
   /** Shows what the captain can do at the nearest island. */
   private updatePrompt(): void {
-    if (this.mode !== 'sail' || this.puzzle.visible || this.results.visible) {
+    if (this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.basePanel.visible) {
       this.prompt.hide();
       return;
     }
@@ -269,9 +322,9 @@ export class App {
     );
   }
 
-  /** Actions at Last Light. The base opens here (see base building). */
+  /** Actions at Last Light. */
   protected homeActions(): PromptAction[] {
-    return [];
+    return [{ code: 'Digit1', key: '1', label: 'Open your base', run: () => this.toggleBase(true) }];
   }
 
   private async captureFort(island: Island): Promise<void> {
@@ -365,7 +418,16 @@ export class App {
       if (layer) this.battleHud.update(runner.current, layer, this.renderer, this.keyboard.salt);
     } else {
       const ship = interpolateShip(this.previous.ship, this.current.ship, alpha);
-      this.renderer.render({ ship, time: this.time, dt: frameSeconds, mode: this.mode === 'intro' ? 'intro' : 'chase', bloodMoon: 0 });
+      const home = this.world.islands[0]!;
+      const base = this.basePanel.visible;
+      this.renderer.render({
+        ship,
+        time: this.time,
+        dt: frameSeconds,
+        mode: this.mode === 'intro' ? 'intro' : base ? 'base' : 'chase',
+        ...(base ? { cameraTarget: { x: home.x + 20, z: home.z, heading: 0, speed: 0 } } : {}),
+        bloodMoon: 0,
+      });
       this.hud.update(ship, this.keyboard.sailLevel);
       this.labels.update(ship, this.renderer, this.renderer.labelAnchors);
       const stuck = this.mode === 'sail' && this.current.ship.sail > 0.1 ? isAground(this.world, this.current.ship) : null;
@@ -395,6 +457,7 @@ export class App {
   /** Starts a battle. The open sea waits where the player left it. */
   startBattle(ticket: BattleTicket): void {
     if (this.mode === 'battle') return;
+    this.toggleBase(false);
     this.intro?.hide();
     this.results.hide();
     this.ticket = ticket;
