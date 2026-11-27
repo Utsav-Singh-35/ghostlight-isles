@@ -1,0 +1,10 @@
+# Store text files with LF line endings in the repo on every platform.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.glb binary
+*.ogg binary
+*.mp3 binary
+*.woff2 binary

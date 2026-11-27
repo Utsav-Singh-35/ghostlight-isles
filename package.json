@@ -1,0 +1,35 @@
+{
+  "name": "ghostlight-isles",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A 3D multiplayer pirate game where you build island bases and keep your lanterns lit against ghost fleets. Built with Kiro for Kiroween 2026.",
+  "license": "MIT",
+  "author": "Utsav Singh",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:sim": "vitest run src/sim",
+    "test:watch": "vitest",
+    "check:assets": "node scripts/check-assets.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/three": "^0.187.0",
+    "fast-check": "^4.11.0",
+    "playwright-core": "^1.65.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.4.0",
+    "vitest": "^5.1.2"
+  }
+}

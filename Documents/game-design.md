@@ -1,0 +1,79 @@
+# Ghostlight Isles: game design
+
+Numbers marked **(code)** are live in `src/sim/balance.ts`; the code wins if the two disagree. All other numbers are starting values to tune when each system is built.
+
+## The world
+- A round sea **1,100 m** in radius (code), generated from a seed. **14 islands** (code): your home island, Last Light, at the centre, and 13 haunted islands.
+- Islands keep at least **70 m** of open water between their shores and stay **140 m** inside the edge of the world (code). The first haunted island always sits 220 to 280 m ahead of where you start, so it shows through the fog straight away.
+- Night by default. Fog hides islands beyond about 300 m, but their lantern glows show through it: warm amber for living islands, spectral green for haunted ones.
+
+## Sailing
+| Value | Number |
+|---|---|
+| Sail settings | Furled, Half sail, Full sail (W / S, one step per press) |
+| Top speed at full sail | 14 m/s, about 27 knots (code) |
+| Acceleration / slowing | 2.2 / 3.0 m/s² (code) |
+| Sails unfurl or furl at | 60% per second (code) |
+| Fastest turn, rudder hard over | 0.5 rad/s, about 29°/s (code) |
+| Steering at rest | 30% of full strength, full strength from 6 m/s (code) |
+| Speed lost with rudder hard over | 25% (code) |
+| Rudder swing | 2.5 rudder units per second (code) |
+| Ship collision radius | 4 m (code) |
+
+Hitting an island stops a head-on ship. A glancing hit slides it along the shore at up to **40%** of top speed (code). The edge of the world works the same way.
+
+## Resources
+| Resource | From | Spent on |
+|---|---|---|
+| Gold | Captured islands (trickle per hour), raids, ghost wrecks | Building and upgrading |
+| Cursed gold | Beating ghost ships: double value, but see below | Same as gold, once cleansed or spent |
+| Ectoplasm | Beating ghost raids and ghost ships | Spirit Lanterns, keeping ghost crew, paying the Ferryman |
+
+Storage caps per home-island level. Raids can take at most **30%** of what is in storage.
+
+## Ship weapons (3 upgrade levels each)
+| Weapon | Effect vs living | Effect vs ghosts | Notes |
+|---|---|---|---|
+| Cannon | Full damage, one target | Half damage | Broadsides with Q (port) and E (starboard), sides reload separately |
+| Salt Shot | 40% damage | Full damage, slows ghosts | Salt is an old folk charm against spirits |
+| Witchfire Barrel | Burns an area | Burns an area | Green fire, thrown over the stern |
+| Bat Swarm | No damage | No damage | Shows a base's layout and hidden mines before an attack |
+
+## Island defenses (3 upgrade levels each)
+| Defense | Strong against | Notes |
+|---|---|---|
+| Cannon Tower | Living ships | Half damage to ghosts |
+| Spirit Lantern | Ghosts | Full damage to ghosts and reveals them in fog. Weak against living ships |
+| Bone Catapult | Groups | Area damage, slow, misses fast ships |
+| Jack-o'-lantern Mines | Anything | Floating pumpkins that explode near ships. Hidden in fog until bats find them |
+
+## Crew
+- You start with two: a **Gunner** (reloads 20% faster) and a **Navigator** (sees 30% further through fog).
+- A crew member who dies in battle returns as a **ghost** for 3 battles with a stronger ability (Gunner: shots pass through ghost hulls; Navigator: reveals mines). After that they fade unless you spend ectoplasm.
+
+## Capturing islands
+Each haunted island can be captured in one of two ways:
+1. **Fort battle:** sink the island's towers from your ship.
+2. **Lantern Lines puzzle:** rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. Puzzles are generated from the island's seed and always have a solution. The same puzzle type is used to escape Davy Jones' Locker, with a time limit.
+
+## Raids (asynchronous multiplayer)
+- You attack a saved copy of another player's island. Its defenses fight on their own.
+- The client sends the seed and your inputs. The server replays the battle and rejects any result that doesn't match.
+- After being raided, an island gets **4 hours** of protection. The owner reads a raid report later.
+
+## The ghost fleet and the Blood Moon
+- Every **20 minutes** the moon turns red for **3 minutes**, for every player at once. Fog thickens, a bell tolls and a stronger ghost fleet sails.
+- The fleet picks the weakest island that isn't protected, weighted by how much cursed gold it holds. The map shows fog creeping toward the target with a countdown.
+- Judges and new players get a **"Summon the Blood Moon"** button so they don't have to wait.
+
+## Cursed gold
+- Ghost loot pays double, but it is cursed. The more cursed gold an island holds, the more likely the fleet targets it.
+- Cleanse it at a chapel (takes time) or spend it quickly.
+
+## Davy Jones' Locker
+- When your ship sinks, you wake on the seabed. Solve a Lantern Lines puzzle before the time runs out, or pay the Ferryman in ectoplasm, to sail back with your ship repaired.
+
+## If we are ahead of schedule
+- **Possession:** a ghost crew member takes over one enemy tower per battle for 5 seconds.
+- **Trick or Treat:** the defender can set out a treat chest; an attacker who takes it leaves in peace and both gain reputation.
+- **Mary Celeste drifters:** empty ships drift across the map; board one and follow the captain's log to buried treasure. The real Mary Celeste was found adrift and empty on 4 December 1872.

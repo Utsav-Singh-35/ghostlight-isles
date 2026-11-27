@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Local environment and secrets (never commit these)
+.env
+.env.*
+!.env.example
+
+# Netlify and Vite local state
+.netlify/
+*.local
+
+# Raw asset downloads (only the models we use go in public/models)
+assets-src/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log
+
+# Do NOT ignore .kiro/ : judges need the specs, hooks and steering.
