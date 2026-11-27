@@ -42,13 +42,15 @@ const check = (ok, message) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${message}`);
 };
 
-async function openGame(browser, base, query, errors) {
+/** Opens the game. Pages are calm (no automatic Blood Moon sieges) unless `calm: false`. */
+async function openGame(browser, base, query, errors, { calm = true } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
   page.on('pageerror', (error) => errors.push(String(error)));
-  await page.goto(`${base}/${query}`);
+  const q = calm ? `${query}${query.includes('?') ? '&' : '?'}calm` : query;
+  await page.goto(`${base}/${q}`);
   await page.waitForFunction(() => window.__ghostlight?.ready === true, null, { timeout: 30000 });
   return page;
 }
@@ -163,7 +165,7 @@ async function main() {
     await basePage.keyboard.press('Tab');
     const panelOpen = await basePage.locator('.base-panel').isVisible();
     check(panelOpen, 'Tab opens the base panel');
-    await basePage.locator('.bp-slot').nth(1).getByRole('button', { name: /Build Spirit Lantern/ }).click();
+    await basePage.locator('.bp-slot', { hasText: 'Slot 2: empty' }).getByRole('button', { name: /Build Spirit Lantern/ }).click();
     await basePage.waitForFunction(() => window.__ghostlight.captain()?.defenses === 2, null, { timeout: 10000 }).catch(() => {});
     const builder = await basePage.evaluate(() => window.__ghostlight.captain());
     check(builder && builder.defenses === 2, 'building a Spirit Lantern adds it to the base');
@@ -198,6 +200,21 @@ async function main() {
     check((await raidPage.locator('.sp-rank').count()) === 10, 'the leaderboard shows the top 10');
     await raidPage.screenshot({ path: join(SHOTS, '12-leaderboard.png') });
     await raidPage.close();
+
+    // Summon the Blood Moon: the night turns red and the ghost fleet comes for Last Light.
+    const moon = await openGame(browser, base, '?skipIntro', errors, { calm: false });
+    await moon.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    await moon.getByRole('button', { name: 'Summon the Blood Moon' }).click();
+    await sleep(3000);
+    const red = await moon.evaluate(() => window.__ghostlight.moon());
+    check(red.red > 0.5 && red.fleetComing, `summoning turns the night red and the fleet sets out (red ${red.red.toFixed(2)})`);
+    await moon.screenshot({ path: join(SHOTS, '13-blood-moon.png') });
+    await moon.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 15000 }).catch(() => {});
+    await sleep(10000);
+    const siegeState = await moon.evaluate(() => window.__ghostlight.battle());
+    check(siegeState && siegeState.mode === 'siege' && siegeState.ghosts > 0, `the fleet arrives and the siege of Last Light begins (${siegeState?.ghosts ?? 0} ghosts afloat)`);
+    await moon.screenshot({ path: join(SHOTS, '14-siege.png') });
+    await moon.close();
 
     // A fort battle: sail in at full sail, fire both broadsides, then retreat.
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);

@@ -136,6 +136,15 @@ export function addReport(profile: Profile, report: Report): Profile {
   return { ...profile, reports: [report, ...profile.reports].slice(0, ECONOMY.maxReports) };
 }
 
+/** Returns cleansed gold once the chapel has finished, up to the storage cap. */
+export function completeCleanse(profile: Profile, now: number): { profile: Profile; gold: number } {
+  const cleanse = profile.cleanse;
+  if (!cleanse || cleanse.readyAt > now) return { profile, gold: 0 };
+  const before = profile.resources.gold;
+  const resources = earn(profile.resources, { gold: cleanse.amount }, capsFor(profile.homeLevel));
+  return { profile: { ...profile, resources, cleanse: null }, gold: resources.gold - before };
+}
+
 /** Collects tribute from captured islands, up to the storage cap. */
 export function collectTribute(profile: Profile, now: number): { profile: Profile; gold: number } {
   const due = tributeDue(profile.captured.length, profile.tributeAt, now);

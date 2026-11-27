@@ -65,6 +65,7 @@ function main(): void {
         skipIntro: params.has('skipIntro'),
         scenario: params.get('scenario'),
         offline: params.has('offline'),
+        calm: params.has('calm'),
       },
       switchQuality,
     );
@@ -87,6 +88,7 @@ function main(): void {
     resultShowing: debug.resultShowing,
     captain: debug.captain,
     puzzle: debug.puzzle,
+    moon: debug.moon,
   });
 }
 

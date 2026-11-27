@@ -1,4 +1,5 @@
-import { COSTS, ECONOMY, WEAPONS, type Cost } from '../sim/balance';
+import { BLOOD_MOON, COSTS, ECONOMY, WEAPONS, type Cost } from '../sim/balance';
+import { fleetFor } from '../sim/bloodMoon';
 import { DEFENSE_NAMES, SHIP_PART_NAMES, SHIP_PARTS, defenseCost, homeUpgradeCost, shipUpgradeCost, slotsFor, spentOn, type ShipPart } from '../sim/base';
 import { canAfford, capsFor, describeCost } from '../sim/economy';
 import { TOWER_TYPES, type DefenseType, type PlacedDefense } from '../sim/layout';
@@ -11,6 +12,7 @@ export interface BasePanelHandlers {
   remove(type: DefenseType, slot: number): void;
   upgradeHome(): void;
   upgradeShip(part: ShipPart): void;
+  cleanse(): void;
   close(): void;
 }
 
@@ -54,6 +56,7 @@ export class BasePanel {
   private readonly root: HTMLElement;
   private tab: 'defenses' | 'ship' = 'defenses';
   private profile: PublicProfile | null = null;
+  private now = Date.now();
 
   constructor(
     parent: HTMLElement,
@@ -69,17 +72,18 @@ export class BasePanel {
     return !this.root.hidden;
   }
 
-  open(profile: PublicProfile): void {
+  open(profile: PublicProfile, now: number): void {
     this.root.hidden = false;
-    this.update(profile);
+    this.update(profile, now);
   }
 
   close(): void {
     this.root.hidden = true;
   }
 
-  update(profile: PublicProfile): void {
+  update(profile: PublicProfile, now = Date.now()): void {
     this.profile = profile;
+    this.now = now;
     if (this.root.hidden) return;
     const caps = capsFor(profile.homeLevel);
     const r = profile.resources;
@@ -114,13 +118,14 @@ export class BasePanel {
       t.setAttribute('aria-selected', String(this.tab === id));
       t.addEventListener('click', () => {
         this.tab = id;
-        if (this.profile) this.update(this.profile);
+        if (this.profile) this.update(this.profile, this.now);
       });
       tabs.append(t);
     }
 
     const body = el('div', 'bp-body');
     if (this.tab === 'defenses') {
+      body.append(this.chapelRow(profile));
       body.append(el('h3', 'bp-section', 'Towers'));
       for (let slot = 0; slot < slots.towers; slot++) body.append(this.slotRow(profile, slot, false));
       body.append(el('h3', 'bp-section', 'Mines in the water'));
@@ -175,6 +180,31 @@ export class BasePanel {
       actions.append(this.button(`Build ${DEFENSE_NAMES[type]}: ${describeCost(cost)}`, ROLES[type], blocked, () => this.handlers.build(type, slot)));
     }
     row.append(actions);
+    return row;
+  }
+
+  /** The next ghost fleet, and the chapel where cursed gold is cleansed. */
+  private chapelRow(profile: PublicProfile): HTMLElement {
+    const row = el('div', 'bp-slot bp-chapel');
+    const fleet = fleetFor(profile);
+    row.append(
+      el('div', 'bp-slot-name', `Next ghost fleet: ${fleet.count} ${fleet.count === 1 ? 'ship' : 'ships'} at level ${fleet.level}`),
+      el('p', 'bp-role', `Every ${BLOOD_MOON.cursedGoldPerExtraShip} cursed gold you hold adds a ship. Spirit Lanterns reveal ghosts; Cannon Towers can't see them in the fog.`),
+    );
+    const cleanse = profile.cleanse;
+    if (cleanse) {
+      const minutes = Math.max(0, Math.ceil((cleanse.readyAt - this.now) / 60_000));
+      row.append(el('p', 'bp-note', minutes > 0 ? `The chapel is cleansing ${cleanse.amount} cursed gold: ready in ${minutes} min.` : `${cleanse.amount} gold is cleansed and arrives with your next tribute.`));
+    } else if (profile.resources.cursedGold > 0) {
+      row.append(
+        this.button(
+          `Cleanse ${profile.resources.cursedGold} cursed gold at the chapel`,
+          `It comes back as plain gold in ${Math.round(BLOOD_MOON.cleanseSeconds / 60)} minutes, and stops drawing ghosts at once.`,
+          null,
+          () => this.handlers.cleanse(),
+        ),
+      );
+    }
     return row;
   }
 

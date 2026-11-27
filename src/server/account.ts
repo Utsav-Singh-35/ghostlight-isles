@@ -1,5 +1,5 @@
 import { ECONOMY } from '../sim/balance';
-import { collectTribute, createProfile, publicProfile } from '../sim/profile';
+import { collectTribute, completeCleanse, createProfile, publicProfile } from '../sim/profile';
 import { hashSecret, saveProfile } from './players';
 import { HttpError, randomHex, route, stringField, type ServerContext } from './router';
 
@@ -50,7 +50,8 @@ route('POST', '/rename', true, async ({ ctx, body, profile }) => {
 });
 
 route('POST', '/collect', true, async ({ ctx, profile }) => {
-  const { profile: next, gold } = collectTribute(profile, ctx.now());
-  await saveProfile(ctx, next);
-  return { profile: publicProfile(next), gold };
+  const tribute = collectTribute(profile, ctx.now());
+  const chapel = completeCleanse(tribute.profile, ctx.now());
+  await saveProfile(ctx, chapel.profile);
+  return { profile: publicProfile(chapel.profile), gold: tribute.gold, cleansed: chapel.gold, now: ctx.now() };
 });

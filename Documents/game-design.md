@@ -87,14 +87,16 @@ Each haunted island can be captured in one of two ways:
 - The client sends the seed and your inputs. The server replays the battle and rejects any result that doesn't match.
 - After being raided, an island gets **4 hours** of protection. The owner reads a raid report later.
 
-## The ghost fleet and the Blood Moon
-- Every **20 minutes** the moon turns red for **3 minutes**, for every player at once. Fog thickens, a bell tolls and a stronger ghost fleet sails.
-- The fleet picks the weakest island that isn't protected, weighted by how much cursed gold it holds. The map shows fog creeping toward the target with a countdown.
-- Judges and new players get a **"Summon the Blood Moon"** button so they don't have to wait.
+## The ghost fleet and the Blood Moon (code)
+- Every **20 minutes** (counted from the Unix epoch) the moon turns red for **3 minutes**, for every player at once. The sky, sea and fog turn red and the fog thickens.
+- When the Blood Moon rises, the fleet sails for **your** Last Light: a warning and a **20 s** countdown, then the siege (or press "Defend now"). After a siege the island **rests for 10 minutes**, so each Blood Moon brings one siege.
+- Fleet size: **2** ships, **+1 per 150 cursed gold** you hold, **+1 per home level above 1**, up to 8. Fleet level: your home level, **+1 per 3 sieges repelled**, up to 5.
+- Each ghost ship sunk pays **40 cursed gold and 8 ectoplasm** and 5 infamy. If the ghosts destroy part of the island they take up to 30% of storage by destruction, cursed gold first.
+- **"Summon the Blood Moon"** (HUD and title screen) raises a personal Blood Moon at once, for judges and the impatient; the fleet arrives 5 s later. Once every 2 minutes.
 
-## Cursed gold
-- Ghost loot pays double, but it is cursed. The more cursed gold an island holds, the more likely the fleet targets it.
-- Cleanse it at a chapel (takes time) or spend it quickly.
+## Cursed gold (code)
+- Ghost loot is cursed gold. It counts as gold for building and is spent first, but every 150 held adds a ship to the next fleet.
+- The chapel (base panel) takes all your cursed gold and returns it as plain gold after **10 minutes**.
 
 ## Davy Jones' Locker
 - When your ship sinks, you wake on the seabed. Solve a Lantern Lines puzzle before the time runs out, or pay the Ferryman in ectoplasm, to sail back with your ship repaired.

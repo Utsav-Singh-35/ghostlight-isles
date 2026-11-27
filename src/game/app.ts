@@ -13,6 +13,7 @@ import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
 import { SidePanel, ago } from '../ui/sidePanel';
 import type { Resources } from '../sim/economy';
+import { bloodMoonAt, fleetCanSail, moonEndsAt, moonIsUp } from '../sim/bloodMoon';
 import type { PublicProfile } from '../sim/profile';
 import { generatePuzzle, type Orientation } from '../sim/puzzle';
 import type { Island } from '../sim/world';
@@ -42,6 +43,8 @@ export interface AppOptions {
   readonly scenario: string | null;
   /** Play offline even if a server answers (for testing the offline path). */
   readonly offline: boolean;
+  /** No automatic ghost sieges from the shared Blood Moon (summoning still works). For tests and recording. */
+  readonly calm: boolean;
 }
 
 /** A battle to fight: its setup, what to show, and what to do with the outcome. */
@@ -80,6 +83,11 @@ export class App {
   private busy = false;
   private readonly basePanel: BasePanel;
   private readonly side: SidePanel;
+  private readonly fleetNotice: Notice;
+  /** How red the night is right now, easing toward the moon's state. */
+  private bloodAmount = 0;
+  /** When the ghost fleet reaches Last Light (local milliseconds), or null. */
+  private fleetEta: number | null = null;
   private readonly intro: Intro | null;
   /** The signed-in captain, once the server (or offline save) has answered. */
   session: Session | null = null;
@@ -115,6 +123,7 @@ export class App {
       { label: 'Base (Tab)', title: 'Build defenses on Last Light and refit your ship', run: () => this.toggleBase() },
       { label: 'Raid (R)', title: "Attack another captain's island while they're away", run: () => void this.openRaids() },
       { label: 'Log (L)', title: 'Reports and the leaderboard', run: () => void this.openLog('reports') },
+      { label: 'Summon the Blood Moon', title: 'Call the ghost fleet to Last Light now instead of waiting for the shared Blood Moon', run: () => void this.summon() },
     ]);
     this.labels = createLabels(this.overlay, this.world);
     this.aground = createNotice(this.overlay, 'notice-aground');
@@ -137,8 +146,10 @@ export class App {
       remove: (type, slot) => command('/base/remove', { type, slot }, `${DEFENSE_NAMES[type]} removed`),
       upgradeHome: () => command('/base/home', {}, 'Last Light grows stronger'),
       upgradeShip: (part) => command('/ship/upgrade', { part }, `${SHIP_PART_NAMES[part]} refitted`),
+      cleanse: () => command('/chapel/cleanse', {}, 'The chapel takes the cursed gold'),
       close: () => this.toggleBase(false),
     });
+    this.fleetNotice = createNotice(this.overlay, 'notice-fleet');
     this.keyboard.on('Tab', () => this.toggleBase());
     this.side = new SidePanel(this.overlay, 'Raids and the Captain’s Log', () => this.side.close());
     this.keyboard.on('KeyR', () => {
@@ -184,7 +195,13 @@ export class App {
       ? null
       : createIntro(this.overlay, () => this.setSail(), [
           { label: 'Try a fort battle', run: () => this.startScenario('practice-fort') },
-          { label: 'Try defending Last Light', run: () => this.startScenario('practice-siege') },
+          {
+            label: 'Summon the Blood Moon',
+            run: () => {
+              this.setSail();
+              void this.summon();
+            },
+          },
         ]);
     if (skip) this.setSail();
 
@@ -216,7 +233,87 @@ export class App {
     this.renderer.setCapturedIslands(captured);
     this.labels.setCaptured(captured);
     this.renderer.setHomeDefenses(this.homeViews(profile));
-    this.basePanel.update(profile);
+    this.basePanel.update(profile, this.session?.now() ?? Date.now());
+  }
+
+  /** Calls up a personal Blood Moon; the fleet arrives a few seconds later. */
+  private async summon(): Promise<void> {
+    const session = this.session;
+    if (!session || this.mode === 'battle') return;
+    if (!this.standardSea) {
+      this.toasts.show('The ghost fleet only sails in the standard sea. Remove ?seed from the address.', 'bad', 6);
+      return;
+    }
+    await this.guarded(async () => {
+      await session.request('POST', '/ghosts/summon');
+      this.toasts.show('The moon turns red. The ghost fleet is coming for Last Light!', 'bad', 5);
+      this.fleetEta = Date.now() + 5000;
+    });
+  }
+
+  /** Watches the moon: reddens the night, warns of the fleet and starts the siege when it arrives. */
+  private watchMoon(frameSeconds: number): void {
+    const session = this.session;
+    const now = session?.now() ?? Date.now();
+    const up = session ? moonIsUp(session.profile, now) && this.standardSea : false;
+    this.bloodAmount += ((up ? 1 : 0) - this.bloodAmount) * Math.min(1, frameSeconds * 0.8);
+    if (!session) return;
+    const moon = bloodMoonAt(now);
+    const clock = (ms: number) => {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    };
+    if (!up) {
+      this.captainBar.setMoon(`Blood Moon rises in ${clock(moon.nextStart - now)}`, false);
+      this.fleetEta = null;
+      this.fleetNotice.show(null);
+      return;
+    }
+    const summoned = session.profile.summonedUntil > now;
+    const sail = fleetCanSail(session.profile, now) && (summoned || !this.options.calm);
+    if (!sail || session.profile.sunk) {
+      this.captainBar.setMoon(`Blood Moon for ${clock(moonEndsAt(session.profile, now) - now)} · Last Light rests`, true);
+      this.fleetEta = null;
+      this.fleetNotice.show(null);
+      return;
+    }
+    if (this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.busy) return;
+    if (this.fleetEta === null) this.fleetEta = Date.now() + 20_000;
+    const left = this.fleetEta - Date.now();
+    this.captainBar.setMoon(`Blood Moon · the ghost fleet reaches Last Light in ${clock(left)}`, true);
+    this.fleetNotice.show(`The ghost fleet sails for Last Light. It arrives in ${Math.max(0, Math.ceil(left / 1000))} s.`, {
+      label: 'Defend now',
+      run: () => void this.defend(),
+    });
+    if (left <= 0) void this.defend();
+  }
+
+  /** The siege of Last Light, fought under the Blood Moon. */
+  private async defend(): Promise<void> {
+    const session = this.session;
+    if (!session || this.mode !== 'sail') return;
+    this.fleetEta = null;
+    this.fleetNotice.show(null);
+    this.toggleBase(false);
+    this.side.close();
+    await this.guarded(async () => {
+      const { ticket } = await session.request<{ ticket: { id: string; setup: BattleSetup } }>('POST', '/ghosts/defend');
+      this.startBattle({
+        title: 'The ghost fleet comes for Last Light',
+        objective: 'Sink every ghost before they put out the lighthouse. R loads Salt Shot.',
+        setup: ticket.setup,
+        finish: async (_live, inputs) => {
+          const { outcome } = await session.request<{ outcome: GhostOutcome }>('POST', '/ghosts/finish', { id: ticket.id, inputs });
+          const { result, taken, rewards } = outcome;
+          const held = !result.keepDestroyed;
+          const lines = battleLines(result);
+          lines.push(`+${rewards.cursedGold} cursed gold, +${rewards.ectoplasm} ectoplasm from the wrecks`);
+          if (taken.gold + taken.cursedGold + taken.ectoplasm > 0) lines.push(`The ghosts carried off ${taken.gold + taken.cursedGold} gold and ${taken.ectoplasm} ectoplasm.`);
+          lines.push('Last Light rests until the next Blood Moon.');
+          return { title: held ? 'Last Light holds' : 'The lighthouse went dark', tone: held ? 'win' : 'loss', lines, actions: [] };
+        },
+      });
+    });
   }
 
   /** The captain's defenses as they stand on Last Light in the open sea. */
@@ -330,7 +427,7 @@ export class App {
       this.prompt.hide();
       this.labels.setVisible(false);
       this.renderer.rig.setView(0.75, 70);
-      this.basePanel.open(this.session.profile);
+      this.basePanel.open(this.session.profile, this.session.now());
     } else if (this.basePanel.visible) {
       this.basePanel.close();
       this.keyboard.setEnabled(true);
@@ -534,8 +631,9 @@ export class App {
         dt: frameSeconds,
         mode: this.mode === 'intro' ? 'intro' : base ? 'base' : 'chase',
         ...(base ? { cameraTarget: { x: home.x + 20, z: home.z, heading: 0, speed: 0 } } : {}),
-        bloodMoon: 0,
+        bloodMoon: this.bloodAmount,
       });
+      this.watchMoon(frameSeconds);
       this.hud.update(ship, this.keyboard.sailLevel);
       this.labels.update(ship, this.renderer, this.renderer.labelAnchors);
       const stuck = this.mode === 'sail' && this.current.ship.sail > 0.1 ? isAground(this.world, this.current.ship) : null;
@@ -696,6 +794,7 @@ export class App {
       },
       resultShowing: () => this.results.visible,
       puzzle: () => this.puzzle.debugState(),
+      moon: () => ({ red: this.bloodAmount, fleetComing: this.fleetEta !== null }),
       captain: () => {
         const s = this.session;
         if (!s) return null;
@@ -703,6 +802,12 @@ export class App {
       },
     };
   }
+}
+
+export interface GhostOutcome {
+  readonly result: BattleResult;
+  readonly taken: Resources;
+  readonly rewards: { readonly cursedGold: number; readonly ectoplasm: number };
 }
 
 export interface RaidTarget {

@@ -11,6 +11,7 @@ export class CaptainBar {
   private readonly cursed: HTMLElement;
   private readonly ecto: HTMLElement;
   private readonly status: HTMLElement;
+  private readonly moon: HTMLElement;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'captain-bar');
@@ -22,7 +23,8 @@ export class CaptainBar {
     this.ecto = el('span', 'cb-ecto');
     resources.append(this.gold, this.cursed, this.ecto);
     this.status = el('div', 'cb-status');
-    this.root.append(this.name, resources, this.status);
+    this.moon = el('div', 'cb-moon');
+    this.root.append(this.name, resources, this.status, this.moon);
     parent.append(this.root);
   }
 
@@ -45,5 +47,11 @@ export class CaptainBar {
 
   setVisible(visible: boolean): void {
     this.root.hidden = !visible;
+  }
+
+  /** The Blood Moon clock, in words. */
+  setMoon(text: string, urgent: boolean): void {
+    setText(this.moon, text);
+    this.moon.classList.toggle('cb-moon-up', urgent);
   }
 }
