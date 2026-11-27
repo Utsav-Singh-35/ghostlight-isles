@@ -11,6 +11,8 @@ import { DEFENSE_NAMES, SHIP_PART_NAMES, slotsFor } from '../sim/base';
 import { fortDifficulty, mineSlotPosition, slotPosition } from '../sim/layout';
 import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
+import { SidePanel, ago } from '../ui/sidePanel';
+import type { Resources } from '../sim/economy';
 import type { PublicProfile } from '../sim/profile';
 import { generatePuzzle, type Orientation } from '../sim/puzzle';
 import type { Island } from '../sim/world';
@@ -77,6 +79,7 @@ export class App {
   /** True while a request to the server is in flight, so keys can't start two things at once. */
   private busy = false;
   private readonly basePanel: BasePanel;
+  private readonly side: SidePanel;
   private readonly intro: Intro | null;
   /** The signed-in captain, once the server (or offline save) has answered. */
   session: Session | null = null;
@@ -110,6 +113,8 @@ export class App {
     root.append(this.overlay);
     this.hud = createHud(this.overlay, options.quality, onSwitchQuality, [
       { label: 'Base (Tab)', title: 'Build defenses on Last Light and refit your ship', run: () => this.toggleBase() },
+      { label: 'Raid (R)', title: "Attack another captain's island while they're away", run: () => void this.openRaids() },
+      { label: 'Log (L)', title: 'Reports and the leaderboard', run: () => void this.openLog('reports') },
     ]);
     this.labels = createLabels(this.overlay, this.world);
     this.aground = createNotice(this.overlay, 'notice-aground');
@@ -135,6 +140,20 @@ export class App {
       close: () => this.toggleBase(false),
     });
     this.keyboard.on('Tab', () => this.toggleBase());
+    this.side = new SidePanel(this.overlay, 'Raids and the Captain’s Log', () => this.side.close());
+    this.keyboard.on('KeyR', () => {
+      if (this.mode === 'sail') void (this.side.visible ? this.side.close() : this.openRaids());
+    });
+    this.keyboard.on('KeyL', () => {
+      if (this.mode === 'sail') void (this.side.visible ? this.side.close() : this.openLog('reports'));
+    });
+    this.keyboard.on('Escape', () => {
+      this.side.close();
+      this.toggleBase(false);
+    });
+    window.setInterval(() => {
+      if (this.session) this.captainBar.set(this.session.profile, this.session.online, this.session.now());
+    }, 30_000);
     this.standardSea = options.seedText === WORLD.defaultSeed;
     for (const code of ['Digit1', 'Digit2', 'Digit3']) {
       this.keyboard.on(code, () => {
@@ -191,7 +210,7 @@ export class App {
 
   /** Called whenever the captain's profile changes. */
   private onProfile(profile: PublicProfile): void {
-    this.captainBar.set(profile, this.session?.online ?? false);
+    this.captainBar.set(profile, this.session?.online ?? false, this.session?.now() ?? Date.now());
     this.captainBar.setVisible(this.mode === 'sail');
     const captured = this.standardSea ? profile.captured : [];
     this.renderer.setCapturedIslands(captured);
@@ -213,10 +232,99 @@ export class App {
     });
   }
 
+  /** Lists islands to raid. */
+  private async openRaids(): Promise<void> {
+    const session = this.session;
+    if (!session || this.mode !== 'sail' || this.puzzle.visible || this.results.visible) return;
+    this.toggleBase(false);
+    await this.guarded(async () => {
+      const { targets } = await session.request<{ targets: RaidTarget[] }>('GET', '/raids/targets');
+      const rows = targets.map((t) => {
+        const row = el('div', 'sp-row');
+        const who = t.kind === 'rival' ? `Captain ${t.name}` : `Captain ${t.name} (a real player)`;
+        row.append(
+          el('div', 'sp-row-title', who),
+          el('p', 'sp-row-detail', `Island level ${t.homeLevel}, ${t.defenses} ${t.defenses === 1 ? 'defense' : 'defenses'}, ${t.infamy} infamy. Could lose up to ${t.loot.gold} gold and ${t.loot.ectoplasm} ectoplasm.`),
+        );
+        const raid = el('button', 'bp-action', `Raid ${t.name}`);
+        raid.type = 'button';
+        raid.addEventListener('click', () => void this.startRaid(t.id));
+        row.append(raid);
+        return row;
+      });
+      const intro = el('p', 'sp-note', 'You fight a copy of their island; they can be away. Half the island earns a star, its lighthouse a second, everything a third. You take up to 30% of their storage.');
+      this.side.show('Raid an island', [intro, ...rows]);
+    });
+  }
+
+  private async startRaid(targetId: string): Promise<void> {
+    const session = this.session;
+    if (!session) return;
+    this.side.close();
+    await this.guarded(async () => {
+      const { ticket } = await session.request<{ ticket: { id: string; setup: BattleSetup; targetName: string } }>('POST', '/raids/start', { targetId });
+      this.startBattle({
+        title: `Raid on Captain ${ticket.targetName}`,
+        objective: 'Destroy what you can. The lighthouse counts three times.',
+        setup: ticket.setup,
+        finish: async (_live, inputs) => {
+          const { outcome } = await session.request<{ outcome: RaidOutcome }>('POST', '/raids/finish', { id: ticket.id, inputs });
+          const { result, loot } = outcome;
+          const lines = battleLines(result);
+          lines.push(`Loot: ${loot.gold + loot.cursedGold} gold${loot.cursedGold ? ` (${loot.cursedGold} of it cursed)` : ''}, ${loot.ectoplasm} ectoplasm`);
+          lines.push(`Infamy +${REWARDS.infamyPerStar * result.stars}`);
+          return {
+            title: result.stars > 0 ? `You raided Captain ${outcome.targetName}` : `Captain ${outcome.targetName}'s island held`,
+            tone: result.stars > 0 ? 'win' : 'loss',
+            stars: result.stars,
+            lines,
+            actions: [],
+          };
+        },
+      });
+    });
+  }
+
+  /** The Captain's Log: reports and the leaderboard. */
+  private async openLog(tab: 'reports' | 'leaderboard'): Promise<void> {
+    const session = this.session;
+    if (!session || this.mode !== 'sail') return;
+    this.toggleBase(false);
+    const tabs = [
+      { id: 'reports', label: 'Reports' },
+      { id: 'leaderboard', label: 'Leaderboard' },
+    ];
+    const switchTab = (id: string) => void this.openLog(id === 'leaderboard' ? 'leaderboard' : 'reports');
+    if (tab === 'reports') {
+      const now = session.now();
+      const reports = session.profile.reports;
+      const rows = reports.length
+        ? reports.map((r) => {
+            const row = el('div', `sp-row sp-row-${r.tone}`);
+            row.append(el('div', 'sp-row-title', r.title), el('p', 'sp-row-detail', `${r.detail} (${ago(now - r.at)})`));
+            return row;
+          })
+        : [el('p', 'sp-note', 'Nothing yet. Capture an island, raid a rival or survive a Blood Moon, and it will be written here.')];
+      this.side.show('Captain’s Log', rows, tabs, 'reports', switchTab);
+      return;
+    }
+    await this.guarded(async () => {
+      const board = await session.request<{ entries: LeaderboardEntry[]; you: { rank: number; infamy: number; of: number } }>('GET', '/leaderboard');
+      const rows: Node[] = board.entries.map((e) => {
+        const row = el('div', `sp-rank${e.you ? ' sp-rank-you' : ''}`);
+        row.append(el('span', undefined, `${e.rank}.`), el('span', undefined, `Captain ${e.name}${e.kind === 'rival' ? '' : ' (player)'}${e.you ? ' (you)' : ''}`), el('span', undefined, `${e.infamy} infamy`));
+        return row;
+      });
+      rows.push(el('p', 'sp-note', `You are number ${board.you.rank} of ${board.you.of} with ${board.you.infamy} infamy. Infamy comes from captures (+${REWARDS.infamyPerCapture}), raid stars (+${REWARDS.infamyPerStar} each) and sinking ghost ships.`));
+      this.side.show('Captain’s Log', rows, tabs, 'leaderboard', switchTab);
+    });
+  }
+
   /** Opens or closes the base panel. The camera flies to Last Light while it is open. */
   toggleBase(open = !this.basePanel.visible): void {
     if (open) {
       if (this.mode !== 'sail' || !this.session || this.puzzle.visible || this.results.visible) return;
+      this.side.close();
       this.keyboard.sailLevel = 0;
       this.keyboard.setEnabled(false);
       this.prompt.hide();
@@ -595,6 +703,30 @@ export class App {
       },
     };
   }
+}
+
+export interface RaidTarget {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: 'captain' | 'rival';
+  readonly homeLevel: number;
+  readonly defenses: number;
+  readonly infamy: number;
+  readonly loot: { readonly gold: number; readonly ectoplasm: number };
+}
+
+export interface RaidOutcome {
+  readonly result: BattleResult;
+  readonly loot: Resources;
+  readonly targetName: string;
+}
+
+export interface LeaderboardEntry {
+  readonly rank: number;
+  readonly name: string;
+  readonly infamy: number;
+  readonly kind: 'captain' | 'rival';
+  readonly you: boolean;
 }
 
 /** The server's answer when a capture finishes. Its `result` is the server's own replay. */

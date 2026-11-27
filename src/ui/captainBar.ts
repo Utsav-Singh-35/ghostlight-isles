@@ -1,6 +1,7 @@
 import type { PublicProfile } from '../sim/profile';
 import { capsFor } from '../sim/economy';
 import { el, setText } from './dom';
+import { duration } from './sidePanel';
 
 /** The captain's name, resources and whether progress saves online or on this device. */
 export class CaptainBar {
@@ -25,7 +26,7 @@ export class CaptainBar {
     parent.append(this.root);
   }
 
-  set(profile: PublicProfile, online: boolean): void {
+  set(profile: PublicProfile, online: boolean, now = Date.now()): void {
     const caps = capsFor(profile.homeLevel);
     const r = profile.resources;
     setText(this.name, `Captain ${profile.name}`);
@@ -36,7 +37,9 @@ export class CaptainBar {
     this.cursed.title = 'Cursed gold draws the ghost fleet. Spend it first, or cleanse it at the chapel.';
     setText(this.ecto, `${r.ectoplasm} ectoplasm`);
     this.ecto.title = `Storage: ${r.ectoplasm} of ${caps.ectoplasm} ectoplasm`;
-    setText(this.status, online ? 'Saved online' : 'Saved on this device');
+    const saved = online ? 'Saved online' : 'Saved on this device';
+    const shield = profile.protectedUntil > now ? ` · protected from raids for ${duration(profile.protectedUntil - now)}` : '';
+    setText(this.status, saved + shield);
     this.status.classList.toggle('cb-offline', !online);
   }
 

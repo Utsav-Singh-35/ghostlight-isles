@@ -174,6 +174,31 @@ async function main() {
     check(!(await basePage.locator('.base-panel').isVisible()), 'Tab closes the base panel again');
     await basePage.close();
 
+    // Raid a rival from the raid list, then read the Captain's Log.
+    const raidPage = await openGame(browser, base, '?skipIntro', errors);
+    await raidPage.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    await raidPage.keyboard.press('KeyR');
+    await raidPage.waitForSelector('.side-panel:not([hidden]) .sp-row', { timeout: 10000 }).catch(() => {});
+    const targetCount = await raidPage.locator('.side-panel .sp-row').count();
+    check(targetCount === 8, `R lists islands to raid (${targetCount})`);
+    await raidPage.screenshot({ path: join(SHOTS, '11-raid-list.png') });
+    await raidPage.locator('.side-panel .sp-row').last().getByRole('button').click();
+    await raidPage.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 10000 }).catch(() => {});
+    check((await raidPage.evaluate(() => window.__ghostlight.mode)) === 'battle', 'choosing a target starts the raid battle');
+    await sleep(1500);
+    await raidPage.getByRole('button', { name: 'Retreat' }).click();
+    await raidPage.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 10000 }).catch(() => {});
+    check(await raidPage.locator('.result-title').textContent().then((t) => /held|raided/.test(t ?? '')), 'the raid ends with a result card from the server');
+    await raidPage.getByRole('button', { name: 'Back to the sea' }).click();
+    await raidPage.keyboard.press('KeyL');
+    await raidPage.waitForSelector('.side-panel:not([hidden]) .sp-row-title', { timeout: 10000 }).catch(() => {});
+    check(await raidPage.locator('.side-panel .sp-row-title').first().textContent().then((t) => /Raid on/.test(t ?? '')), 'the Captain’s Log reports the raid');
+    await raidPage.getByRole('tab', { name: 'Leaderboard' }).click();
+    await raidPage.waitForSelector('.sp-rank', { timeout: 10000 }).catch(() => {});
+    check((await raidPage.locator('.sp-rank').count()) === 10, 'the leaderboard shows the top 10');
+    await raidPage.screenshot({ path: join(SHOTS, '12-leaderboard.png') });
+    await raidPage.close();
+
     // A fort battle: sail in at full sail, fire both broadsides, then retreat.
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);
     check((await fort.evaluate(() => window.__ghostlight.mode)) === 'battle', 'the fort scenario opens a battle');

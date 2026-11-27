@@ -10,7 +10,7 @@ Each feature gets its own spec in `.kiro/specs/`, passes its tests and the smoke
 - [x] **F3 Capturing islands** (spec `island-capture`): fort battles and the Lantern Lines puzzle. Sun Nov 29.
 - [x] **F4 Accounts and saving** (spec `persistence`): guest login and saved progress, served by a Netlify Function with Netlify Blobs, or offline in the browser. Sun Nov 29.
 - [x] **F5 Base building** (spec `base-building`): place and upgrade defenses on the home island, resources and storage. Mon Nov 30.
-- [ ] **F6 Raids** (spec `raids`): raid saved islands, server replay check in a Netlify Function, raid reports, protection timer, leaderboard. Tue Dec 1.
+- [x] **F6 Raids** (spec `raids`): raid saved islands, server replay check in a Netlify Function, raid reports, protection timer, leaderboard. Tue Dec 1.
 - [ ] **F7 Ghost fleet** (spec `ghost-fleet`): the Blood Moon clock, ghost raids on the weakest island, cursed gold, Salt Shot and Spirit Lanterns. Tue Dec 1.
 - [ ] **F8 Davy Jones' Locker** (spec `davy-jones-locker`): sinking, the seabed escape puzzle, the Ferryman. Wed Dec 2.
 - [ ] **F9 Polish**: sound, effects, tutorial, balance, bug fixes, playtests with real people. Wed Dec 2 to Thu Dec 3.

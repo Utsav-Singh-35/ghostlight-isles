@@ -1127,6 +1127,74 @@ kbd {
   align-self: center;
 }
 
+.side-panel {
+  position: absolute;
+  top: 4rem;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  width: min(25rem, calc(100% - 2rem));
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 16px;
+  pointer-events: auto;
+  background: rgba(5, 10, 20, 0.88);
+  backdrop-filter: blur(6px);
+}
+
+.side-panel[hidden],
+.bp-tabs[hidden] {
+  display: none;
+}
+
+.sp-row {
+  margin-bottom: 0.55rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(227, 217, 194, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sp-row-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.sp-row-detail {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(227, 217, 194, 0.75);
+}
+
+.sp-row-good .sp-row-title {
+  color: #ffe2a8;
+}
+
+.sp-row-bad .sp-row-title {
+  color: #ffb3b3;
+}
+
+.sp-rank {
+  display: grid;
+  grid-template-columns: 2rem 1fr auto;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+
+.sp-rank-you {
+  border: 1px solid var(--lantern);
+  color: #ffe2a8;
+}
+
+.sp-note {
+  font-size: 0.8rem;
+  color: rgba(227, 217, 194, 0.65);
+}
+
 .hud-base {
   padding: 0.35rem 0.8rem;
   border: 1px solid var(--panel-edge);
