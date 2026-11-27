@@ -81,7 +81,7 @@ Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 
 ## Capturing islands
 Each haunted island can be captured in one of two ways:
 1. **Fort battle:** sink the island's towers from your ship.
-2. **Lantern Lines puzzle:** rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. Puzzles are generated from the island's seed and always have a solution. The same puzzle type is used to escape Davy Jones' Locker, with a time limit.
+2. **Lantern Lines puzzle:** rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. The server picks a new seed for every attempt, and every generated puzzle has a solution. The same puzzle type is used to escape Davy Jones' Locker, with a time limit.
 
 ## Raids (asynchronous multiplayer)
 - You attack a saved copy of another player's island. Its defenses fight on their own.

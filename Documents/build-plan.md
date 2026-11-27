@@ -14,7 +14,7 @@ Each feature gets its own spec in `.kiro/specs/`, passes its tests and the smoke
 - [x] **F7 Ghost fleet** (spec `ghost-fleet`): the Blood Moon clock, ghost raids on the weakest island, cursed gold, Salt Shot and Spirit Lanterns. Tue Dec 1.
 - [x] **F8 Davy Jones' Locker** (spec `davy-jones-locker`): sinking, the seabed escape puzzle, the Ferryman, ghost crew. Wed Dec 2.
 - [x] **F9 Polish** (specs `sound`, `captains-orders`): sound made in code, the Captain's orders tutorial, a balance pass, bug fixes. Playtests with real people are still to do. Wed Dec 2 to Thu Dec 3.
-- [ ] **Submission**: README, blog post, social post, video, Devpost write-up. Thu Dec 3 to Fri Dec 4.
+- [ ] **Submission**: README, blog post, social post, video, Devpost write-up. Thu Dec 3 to Fri Dec 4. README done; the other texts are drafted in `Documents/` and wait for the live URL and the video.
 
 ## Checkpoints
 | When (IST) | Check | If it fails |

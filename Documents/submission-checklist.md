@@ -13,14 +13,14 @@ Sources: the [Devpost overview](https://kiroween.devpost.com/) and [AWS Japan's 
 | Winners announced | about Feb 3, 2027 | |
 
 ## Required in the submission
-- [ ] **Public GitHub repo** (GitLab and Bitbucket are not accepted): https://github.com/Utsav-Singh-35/ghostlight-isles
-- [ ] **Open-source license** that shows in the repo's About section (MIT, in `LICENSE`)
-- [ ] **`/.kiro` folder at the repo root**, with specs, hooks and steering. Never add it to `.gitignore`; that can disqualify the entry.
-- [ ] **Everything needed to run the project** in the repo: source, assets and instructions (README)
+- [x] **Public GitHub repo** (GitLab and Bitbucket are not accepted): https://github.com/Utsav-Singh-35/ghostlight-isles (checked Nov 27: public)
+- [x] **Open-source license** that shows in the repo's About section (MIT, in `LICENSE`; GitHub detects it as MIT)
+- [x] **`/.kiro` folder at the repo root**, with specs, hooks and steering. Never add it to `.gitignore`; that can disqualify the entry.
+- [x] **Everything needed to run the project** in the repo: source, assets and instructions (README)
 - [ ] **Working app URL.** If login is needed, give judges test credentials and steps in the private field of the form. We use guest login, so none are needed.
-- [ ] **Text description** of the features
-- [ ] **Demo video under 3 minutes** on YouTube, showing the game running on the device it was built on. Judges may stop watching at 3 minutes. No third-party trademarks or copyrighted music without permission.
-- [ ] **"How I used Kiro" write-up** (draft it from `kiro-usage-log.md`)
+- [ ] **Text description** of the features (draft: `devpost-description.md`)
+- [ ] **Demo video under 3 minutes** on YouTube, showing the game running on the device it was built on. Judges may stop watching at 3 minutes. No third-party trademarks or copyrighted music without permission. (Script: `video-script.md`)
+- [ ] **"How I used Kiro" write-up** (draft: `how-i-used-kiro.md`)
 - [ ] **Category:** Costume Contest (one category per project)
 - [ ] Declare any code that existed before Oct 30 other than frameworks, libraries and starter templates. We have none.
 - [ ] Everything in English
@@ -36,8 +36,8 @@ Sources: the [Devpost overview](https://kiroween.devpost.com/) and [AWS Japan's 
 - Kiro powers: which ones, and which tools we would not have used without them
 
 ## Bonus prizes we will enter (chosen in the submission form)
-- [ ] **Bonus Blog Prize:** publish a post on an external blog during the submission period, saying in the post that it was written for Kiroween 2026. Submit its URL.
-- [ ] **Social Blitz Prize:** post starting with #KiroweenHackathon26 about our favorite thing in Kiro and how it changed our workflow, in our own words, with good images or video. Submit its URL.
+- [ ] **Bonus Blog Prize:** publish a post on an external blog during the submission period, saying in the post that it was written for Kiroween 2026. Submit its URL. (Draft: `blog-post.md`)
+- [ ] **Social Blitz Prize:** post starting with #KiroweenHackathon26 about our favorite thing in Kiro and how it changed our workflow, in our own words, with good images or video. Submit its URL. (Drafts: `social-post.md`)
 - [ ] **Best Kiro Crew App** (only if ahead): a separate GitHub repo for the Crew app plus a description.
 - Best Demo needs no form: it goes to the best Presentation score among the top 10% of projects.
 
@@ -54,7 +54,7 @@ Sources: the [Devpost overview](https://kiroween.devpost.com/) and [AWS Japan's 
 - [ ] The live URL loads in a fresh browser profile, on a second computer if possible
 - [ ] Guest login works and a judge reaches a fun moment within 2 minutes
 - [ ] Demo buttons work ("Summon the Blood Moon")
-- [ ] README has the live URL, controls, how to run locally, and how Kiro was used
+- [ ] README has the live URL, controls, how to run locally, and how Kiro was used (everything but the live URL is in)
 - [ ] `Documents/credits.md` lists every third-party asset
 - [ ] The video is public or unlisted on YouTube and under 3:00
 - [ ] Submit by Fri Dec 4, 10:00 PM IST
