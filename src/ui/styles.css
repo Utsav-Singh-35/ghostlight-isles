@@ -726,6 +726,254 @@ kbd {
   justify-content: center;
 }
 
+/* ---- Island prompt ---- */
+.context-prompt {
+  position: absolute;
+  right: 1.2rem;
+  bottom: 6.6rem;
+  max-width: 21rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 14px;
+  background: var(--panel);
+  backdrop-filter: blur(4px);
+}
+
+.context-prompt[hidden],
+.cp-detail[hidden] {
+  display: none;
+}
+
+.cp-title {
+  font: 400 1.1rem var(--title-font);
+  color: #ffe2a8;
+}
+
+.cp-detail {
+  margin-top: 0.3rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: rgba(227, 217, 194, 0.85);
+}
+
+.cp-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.cp-action {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(255, 179, 71, 0.4);
+  border-radius: 10px;
+  font: 500 0.88rem var(--ui-font);
+  text-align: left;
+  color: var(--bone);
+  background: rgba(255, 179, 71, 0.08);
+  cursor: pointer;
+}
+
+.cp-action:hover,
+.cp-action:focus-visible {
+  outline: none;
+  border-color: var(--lantern);
+  background: rgba(255, 179, 71, 0.18);
+}
+
+/* ---- Toasts ---- */
+.toasts {
+  position: absolute;
+  top: 4.2rem;
+  right: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-end;
+}
+
+.toast {
+  max-width: 22rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  font-size: 0.86rem;
+  background: var(--panel);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.toast-good {
+  border-color: rgba(255, 179, 71, 0.6);
+  color: #ffe2a8;
+}
+
+.toast-bad {
+  border-color: rgba(255, 120, 120, 0.6);
+  color: #ffd6d6;
+}
+
+.toast-out {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* ---- Lantern Lines ---- */
+.puzzle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(5, 10, 20, 0.55);
+}
+
+.puzzle[hidden],
+.puzzle-clock[hidden] {
+  display: none;
+}
+
+.puzzle-card {
+  width: min(30rem, calc(100% - 2rem));
+  padding: 1.2rem 1.4rem;
+  border: 1px solid rgba(92, 255, 176, 0.35);
+  border-radius: 18px;
+  text-align: center;
+  background: rgba(4, 14, 18, 0.92);
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.7);
+  transition: box-shadow 0.6s ease, border-color 0.6s ease;
+}
+
+.puzzle-solved {
+  border-color: var(--lantern);
+  box-shadow: 0 0 60px rgba(255, 179, 71, 0.55);
+}
+
+.puzzle-title {
+  margin: 0;
+  font: 400 1.55rem var(--title-font);
+  color: #ffe2a8;
+}
+
+.puzzle-subtitle,
+.puzzle-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  color: rgba(227, 217, 194, 0.8);
+}
+
+.puzzle-hint {
+  margin-bottom: 0.8rem;
+  font-size: 0.78rem;
+  color: rgba(227, 217, 194, 0.55);
+}
+
+.puzzle-status {
+  margin: 0.4rem 0 0;
+  color: #c8ffe6;
+}
+
+.puzzle-clock {
+  margin: 0.5rem 0 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--spectral);
+}
+
+.puzzle-clock-low {
+  color: #ff8a8a;
+}
+
+.puzzle-board {
+  width: 100%;
+  max-width: 24rem;
+  margin-top: 0.6rem;
+}
+
+.pz-cell {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: rgba(92, 255, 176, 0.12);
+}
+
+.pz-tile-rock {
+  fill: rgba(255, 255, 255, 0.02);
+}
+
+.pz-tile-mirror {
+  fill: rgba(92, 255, 176, 0.06);
+  stroke: rgba(92, 255, 176, 0.35);
+  stroke-width: 1.5;
+}
+
+.pz-rock-shape {
+  fill: #3a3d45;
+  stroke: #55595f;
+}
+
+.pz-totem rect,
+.pz-totem circle {
+  fill: #2b3a35;
+  stroke: #4f6b61;
+  transition: fill 0.3s ease;
+}
+
+.pz-totem .pz-eye {
+  fill: #5cffb0;
+  stroke: none;
+  opacity: 0.4;
+}
+
+.pz-lit rect,
+.pz-lit circle {
+  fill: #ffb347;
+  stroke: #ffe2a8;
+}
+
+.pz-lit .pz-eye {
+  fill: #1a1208;
+  opacity: 1;
+}
+
+.pz-mirror {
+  stroke: #c8ffe6;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.pz-clickable {
+  cursor: pointer;
+  outline: none;
+}
+
+.pz-clickable:hover .pz-cell,
+.pz-clickable:focus-visible .pz-cell {
+  fill: rgba(92, 255, 176, 0.12);
+  stroke: var(--spectral);
+}
+
+.pz-beam,
+.pz-lighthouse {
+  /* The beam is drawn over the mirrors; clicks must reach the mirror underneath. */
+  pointer-events: none;
+}
+
+.pz-beam {
+  stroke: #ffb347;
+  stroke-width: 4;
+  stroke-linejoin: round;
+  opacity: 0.95;
+}
+
+.pz-tower {
+  fill: #b8b2a4;
+}
+
+.pz-lamp {
+  fill: #ffb347;
+}
+
 /* ---- Fatal errors ---- */
 .fatal {
   max-width: 32rem;

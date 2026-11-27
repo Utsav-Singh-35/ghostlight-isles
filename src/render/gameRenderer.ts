@@ -82,6 +82,7 @@ export class GameRenderer {
   private readonly pointLightCount: number;
   private readonly pixelRatio: number;
   private battle: BattleLayer | null = null;
+  private captured: ReadonlySet<number> = new Set();
   private scale = 500;
   private fps = 60;
   private pitch = 0;
@@ -220,6 +221,15 @@ export class GameRenderer {
     this.homeDefenses.set(views);
   }
 
+  /** Captured islands burn warm lanterns and lose their ghost lights. */
+  setCapturedIslands(ids: readonly number[]): void {
+    const set = new Set(ids);
+    this.captured = set;
+    this.islands.setCaptured(set);
+    this.glows.setCaptured(set);
+    this.wisps.setCaptured(set);
+  }
+
   /** Draws one frame. */
   render(frame: Frame): void {
     const { ship, time, dt } = frame;
@@ -285,6 +295,7 @@ export class GameRenderer {
       let nearest: LightAnchor | null = null;
       let best = Infinity;
       for (const anchor of this.spectralAnchors) {
+        if (this.captured.has(anchor.islandId)) continue;
         const d = Math.hypot(anchor.position.x - ship.x, anchor.position.z - ship.z);
         if (d < best) {
           best = d;

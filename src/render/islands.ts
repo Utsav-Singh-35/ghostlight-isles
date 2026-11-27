@@ -11,12 +11,15 @@ export interface GlowSpec {
   readonly kind: GlowKind;
   /** Glow diameter in metres. */
   readonly size: number;
+  /** The island it belongs to, or −1 for the ship's lanterns. */
+  readonly islandId?: number;
 }
 
 export interface WispSpec {
   readonly position: THREE.Vector3;
   /** How far the wisp wanders from its anchor, metres. */
   readonly radius: number;
+  readonly islandId: number;
 }
 
 export interface LightAnchor {
@@ -34,6 +37,8 @@ export interface IslandScene {
   /** Where each island's label floats, by island id. */
   readonly labelAnchors: readonly THREE.Vector3[];
   readonly drawCalls: number;
+  /** Lights captured islands' lantern glass warm instead of green. */
+  setCaptured(ids: ReadonlySet<number>): void;
   dispose(): void;
 }
 
@@ -269,6 +274,8 @@ export function createIslands(world: World): IslandScene {
   const posts: Placement[] = [];
   const glass: Placement[] = [];
   const glassColors: THREE.Color[] = [];
+  /** The island each glowing lantern glass belongs to, for recoloring captured islands. */
+  const glassIslands: number[] = [];
   const glows: GlowSpec[] = [];
   const wisps: WispSpec[] = [];
   const lights: LightAnchor[] = [];
@@ -322,7 +329,8 @@ export function createIslands(world: World): IslandScene {
       const glassPos: Vec3 = [gx, at[1] + oy, gz];
       glass.push({ position: glassPos, rotation: [0, turn, 0], scale: [0.24, 0.36, 0.24] });
       glassColors.push(kind === 'lantern' ? lanternColor : spectralColor);
-      glows.push({ position: new THREE.Vector3(...glassPos), kind, size: kind === 'lantern' ? 2.6 : 3.0 });
+      glows.push({ position: new THREE.Vector3(...glassPos), kind, size: kind === 'lantern' ? 2.6 : 3.0, islandId: island.id });
+      glassIslands.push(island.id);
       return glassPos;
     };
 
@@ -339,7 +347,8 @@ export function createIslands(world: World): IslandScene {
       const lampY = peak - 0.6 + lanternHeight;
       glass.push({ position: [island.x, lampY, island.z], rotation: [0, 0, 0], scale: [2.3, 1.5, 2.3] });
       glassColors.push(lanternColor);
-      glows.push({ position: new THREE.Vector3(island.x, lampY, island.z), kind: 'lantern', size: 14 });
+      glows.push({ position: new THREE.Vector3(island.x, lampY, island.z), kind: 'lantern', size: 14, islandId: island.id });
+      glassIslands.push(island.id);
       lights.push({ islandId: island.id, position: new THREE.Vector3(island.x, lampY, island.z), kind: 'lantern' });
 
       // A dock pointing at the spawn, with lanterns at its end.
@@ -356,7 +365,8 @@ export function createIslands(world: World): IslandScene {
         const glassPos: Vec3 = [base[0] + (side < 0 ? -0.34 : 0.34), base[1] + 1.78, base[2]];
         glass.push({ position: glassPos, rotation: [0, 0, 0], scale: [0.2, 0.3, 0.2] });
         glassColors.push(lanternColor);
-        glows.push({ position: new THREE.Vector3(...glassPos), kind: 'lantern', size: 2.4 });
+        glows.push({ position: new THREE.Vector3(...glassPos), kind: 'lantern', size: 2.4, islandId: island.id });
+        glassIslands.push(island.id);
       }
       addPost(Math.PI * 0.75, 0.72, 'lantern');
       addPost(-Math.PI * 0.6, 0.72, 'lantern');
@@ -385,6 +395,7 @@ export function createIslands(world: World): IslandScene {
         const at = ground(rng.range(0, Math.PI * 2), rng.range(0, 0.9));
         if (!at) continue;
         wisps.push({
+          islandId: island.id,
           position: new THREE.Vector3(at[0], at[1] + rng.range(1.5, 7), at[2]),
           radius: rng.range(1, 4),
         });
@@ -404,7 +415,8 @@ export function createIslands(world: World): IslandScene {
     disposables.push(geometry);
   }
   const glassGeometry = new THREE.BoxGeometry(1, 1, 1);
-  group.add(instanced(glassGeometry, glassMaterial, glass, glassColors));
+  const glassMesh = instanced(glassGeometry, glassMaterial, glass, glassColors);
+  group.add(glassMesh);
   disposables.push(glassGeometry);
 
   const drawCalls = group.children.length;
@@ -416,6 +428,13 @@ export function createIslands(world: World): IslandScene {
     lights,
     labelAnchors,
     drawCalls,
+    setCaptured(ids) {
+      glassColors.forEach((original, i) => {
+        const island = glassIslands[i];
+        glassMesh.setColorAt(i, island !== undefined && ids.has(island) ? lanternColor : original);
+      });
+      if (glassMesh.instanceColor) glassMesh.instanceColor.needsUpdate = true;
+    },
     dispose() {
       for (const item of disposables) item.dispose();
     },

@@ -1,0 +1,27 @@
+import { CREW } from '../sim/balance';
+import type { BattleResult } from '../sim/battle';
+import type { CrewSlot, Profile } from '../sim/profile';
+
+/**
+ * What every battle leaves behind: ghost crew members use up a battle, and when the ship sinks
+ * one living crew member dies and comes back as a ghost.
+ */
+export function afterBattle(profile: Profile, result: BattleResult | null, seed: number): Profile {
+  if (!result) return profile;
+  const wear = (slot: CrewSlot): CrewSlot => {
+    if (slot.state !== 'ghost') return slot;
+    const battlesLeft = slot.battlesLeft - 1;
+    return battlesLeft > 0 ? { state: 'ghost', battlesLeft } : { state: 'none', battlesLeft: 0 };
+  };
+  let crew = { gunner: wear(profile.crew.gunner), navigator: wear(profile.crew.navigator) };
+  let stats = profile.stats;
+  if (result.shipSunk) {
+    const living = (['gunner', 'navigator'] as const).filter((role) => crew[role].state === 'living');
+    if (living.length > 0) {
+      const role = living[seed % living.length]!;
+      crew = { ...crew, [role]: { state: 'ghost', battlesLeft: CREW.ghostBattles } };
+    }
+    stats = { ...stats, timesSunk: stats.timesSunk + 1 };
+  }
+  return { ...profile, crew, stats };
+}

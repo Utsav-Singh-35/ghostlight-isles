@@ -13,6 +13,8 @@ export interface Projector {
 export interface Labels {
   update(ship: ShipState, projector: Projector, anchors: readonly THREE.Vector3[]): void;
   setVisible(visible: boolean): void;
+  /** Captured islands are labelled "Yours". */
+  setCaptured(ids: readonly number[]): void;
 }
 
 /** Floating names over nearby islands: name, owner in words (not only color) and distance. */
@@ -30,6 +32,7 @@ export function createLabels(parent: HTMLElement, world: World): Labels {
   });
   const point = { x: 0, y: 0, visible: false };
   let visible = false;
+  let captured = new Set<number>();
 
   return {
     update(ship, projector, anchors) {
@@ -48,16 +51,20 @@ export function createLabels(parent: HTMLElement, world: World): Labels {
         }
         slot.label.hidden = false;
         const home = entry.island.kind === 'home';
-        slot.label.classList.toggle('island-home', home);
-        slot.label.classList.toggle('island-haunted', !home);
+        const ours = home || captured.has(entry.island.id);
+        slot.label.classList.toggle('island-home', ours);
+        slot.label.classList.toggle('island-haunted', !ours);
         setText(slot.name, entry.island.name);
         const metres = Math.max(0, Math.round(entry.distance / 10) * 10);
-        setText(slot.detail, `${home ? 'Your island' : 'Haunted'} · ${metres} m`);
+        setText(slot.detail, `${home ? 'Your home' : ours ? 'Yours' : 'Haunted'} · ${metres} m`);
         slot.label.style.transform = `translate(${point.x.toFixed(1)}px, ${point.y.toFixed(1)}px) translate(-50%, -100%)`;
       });
     },
     setVisible(value) {
       visible = value;
+    },
+    setCaptured(ids) {
+      captured = new Set(ids);
     },
   };
 }

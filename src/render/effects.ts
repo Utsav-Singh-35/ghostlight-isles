@@ -49,6 +49,8 @@ export interface Glows {
   readonly points: THREE.Points;
   /** Moves one of the extra, movable glows (such as the ship's lanterns). */
   setMovable(index: number, position: THREE.Vector3): void;
+  /** Recolors the fixed glows of these islands: warm when captured, their original color otherwise. */
+  setCaptured(ids: ReadonlySet<number>): void;
   update(time: number, scale: number): void;
   dispose(): void;
 }
@@ -94,6 +96,14 @@ export function createGlows(fixed: readonly GlowSpec[], movable: readonly GlowSp
       position.toArray(positions, index * 3);
       positionAttribute.needsUpdate = true;
     },
+    setCaptured(ids) {
+      const warm = colorFor('lantern');
+      all.forEach((glow, i) => {
+        const owned = glow.islandId !== undefined && ids.has(glow.islandId);
+        (owned ? warm : colorFor(glow.kind)).toArray(colors, i * 3);
+      });
+      geometry.getAttribute('aColor').needsUpdate = true;
+    },
     update(time, scale) {
       material.uniforms.uTime!.value = time;
       material.uniforms.uScale!.value = scale;
@@ -118,7 +128,7 @@ void main() {
   vec3 p = position + vec3(sin(t) * aMotion.x, sin(t * 1.7 + aMotion.z * 3.0) * 0.8, cos(t * 0.8) * aMotion.x);
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   vAlpha = 0.55 + 0.45 * sin(uTime * 2.3 + aMotion.z * 20.0);
-  gl_PointSize = clamp(aMotion.w * uScale / max(-mvPosition.z, 0.1), 1.5, 200.0);
+  gl_PointSize = aMotion.w <= 0.0 ? 0.0 : clamp(aMotion.w * uScale / max(-mvPosition.z, 0.1), 1.5, 200.0);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`;
@@ -146,6 +156,8 @@ void main() {
 export interface Wisps {
   readonly points: THREE.Points;
   update(time: number, scale: number): void;
+  /** Captured islands lose their ghost lights. */
+  setCaptured(ids: ReadonlySet<number>): void;
   dispose(): void;
 }
 
@@ -153,9 +165,11 @@ export function createWisps(specs: readonly WispSpec[]): Wisps {
   const rng = createRng(0xa11);
   const positions = new Float32Array(specs.length * 3);
   const motion = new Float32Array(specs.length * 4);
+  const sizes = new Float32Array(specs.length);
   specs.forEach((wisp, i) => {
     wisp.position.toArray(positions, i * 3);
-    motion.set([wisp.radius, rng.range(0.15, 0.45), rng.next(), rng.range(0.9, 1.7)], i * 4);
+    sizes[i] = rng.range(0.9, 1.7);
+    motion.set([wisp.radius, rng.range(0.15, 0.45), rng.next(), sizes[i]!], i * 4);
   });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -181,6 +195,12 @@ export function createWisps(specs: readonly WispSpec[]): Wisps {
     update(time, scale) {
       material.uniforms.uTime!.value = time;
       material.uniforms.uScale!.value = scale;
+    },
+    setCaptured(ids) {
+      specs.forEach((wisp, i) => {
+        motion[i * 4 + 3] = ids.has(wisp.islandId) ? 0 : sizes[i]!;
+      });
+      geometry.getAttribute('aMotion').needsUpdate = true;
     },
     dispose() {
       geometry.dispose();

@@ -86,6 +86,7 @@ function main(): void {
     battle: debug.battle,
     resultShowing: debug.resultShowing,
     captain: debug.captain,
+    puzzle: debug.puzzle,
   });
 }
 

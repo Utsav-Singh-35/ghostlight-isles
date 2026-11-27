@@ -129,6 +129,34 @@ async function main() {
     check(await offline.locator('.cb-status').textContent().then((t) => t === 'Saved on this device'), 'the HUD says progress is saved on this device');
     await offline.close();
 
+    // Capture the first haunted island by solving its Lantern Lines, in the standard sea.
+    const cap = await openGame(browser, base, '?skipIntro', errors);
+    await cap.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    await cap.keyboard.press('KeyW');
+    const prompted = await cap
+      .waitForFunction(() => /haunted/.test(document.querySelector('.context-prompt:not([hidden]) .cp-title')?.textContent ?? ''), null, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    check(prompted, 'sailing toward a haunted island offers to capture it');
+    await cap.keyboard.press('KeyS');
+    await cap.keyboard.press('Digit2');
+    await cap.waitForFunction(() => window.__ghostlight.puzzle() !== null, null, { timeout: 10000 }).catch(() => {});
+    const mirrors = await cap.evaluate(() => window.__ghostlight.puzzle());
+    check(Array.isArray(mirrors) && mirrors.length > 0, `pressing 2 opens the Lantern Lines (${mirrors?.length ?? 0} mirrors)`);
+    await cap.screenshot({ path: join(SHOTS, '07-lantern-lines.png') });
+    for (const m of mirrors ?? []) {
+      if (m.current !== m.solution) await cap.locator(`[data-cell="${m.cell}"]`).click();
+    }
+    await cap.waitForFunction(() => window.__ghostlight.resultShowing(), null, { timeout: 10000 }).catch(() => {});
+    const afterCapture = await cap.evaluate(() => window.__ghostlight.captain());
+    check(afterCapture && afterCapture.captured.includes(1), 'solving the puzzle captures the island on the server');
+    check(afterCapture && afterCapture.resources.gold > 600, `the capture pays its reward (${afterCapture?.resources.gold} gold)`);
+    await cap.screenshot({ path: join(SHOTS, '08-island-captured.png') });
+    await cap.getByRole('button', { name: 'Back to the sea' }).click();
+    await sleep(1500);
+    await cap.screenshot({ path: join(SHOTS, '09-warm-island.png') });
+    await cap.close();
+
     // A fort battle: sail in at full sail, fire both broadsides, then retreat.
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);
     check((await fort.evaluate(() => window.__ghostlight.mode)) === 'battle', 'the fort scenario opens a battle');

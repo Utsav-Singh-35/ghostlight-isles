@@ -3,6 +3,7 @@
  * online, in Vite's dev and preview servers, and in the browser when no server is reachable.
  */
 import './account';
+import './capture';
 import { authenticate } from './players';
 import { HttpError, findRoute, type ServerContext } from './router';
 
