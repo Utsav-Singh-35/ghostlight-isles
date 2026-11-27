@@ -136,6 +136,57 @@ function sailGeometry(width: number, height: number, belly: number): THREE.Buffe
   return b.build();
 }
 
+export interface GhostShipModel {
+  readonly group: THREE.Group;
+  /** 0 hidden, about 0.15 veiled in fog, 1 revealed. */
+  setOpacity(opacity: number): void;
+  dispose(): void;
+}
+
+/** A ghost ship: the same hull, see-through and glowing spectral green, with torn sails. */
+export function createGhostShipModel(seed: number): GhostShipModel {
+  const group = new THREE.Group();
+  group.name = 'ghost-ship';
+  const material = new THREE.MeshLambertMaterial({
+    color: '#3A8F72',
+    emissive: new THREE.Color(PALETTE.spectral).multiplyScalar(0.45),
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    flatShading: true,
+  });
+  const hull = new THREE.Mesh(hullGeometry(), material);
+  group.add(hull);
+  const sailGeometries: THREE.BufferGeometry[] = [];
+  const tears = [0.62, 0.8, 0.5, 0.72];
+  [
+    [-0.6, 7.55, 6.4, 4.5],
+    [3.2, 6.35, 5.4, 3.5],
+  ].forEach(([z, y, width, height], i) => {
+    const geometry = sailGeometry(width!, height! * (tears[(seed + i) % 4] as number), 0.35);
+    sailGeometries.push(geometry);
+    const sail = new THREE.Mesh(geometry, material);
+    sail.position.set(0, y!, z! + 0.25);
+    sail.rotation.z = ((seed + i) % 2 ? 1 : -1) * 0.12;
+    group.add(sail);
+  });
+  const glow = new THREE.Color(PALETTE.spectral);
+  return {
+    group,
+    setOpacity(opacity) {
+      material.opacity = 0.08 + opacity * 0.52;
+      material.emissive.copy(glow).multiplyScalar(0.12 + opacity * 0.38);
+      group.visible = opacity > 0.01;
+    },
+    dispose() {
+      hull.geometry.dispose();
+      for (const g of sailGeometries) g.dispose();
+      material.dispose();
+    },
+  };
+}
+
 export interface ShipModel {
   readonly group: THREE.Group;
   /** Lantern positions in the model's own space. */

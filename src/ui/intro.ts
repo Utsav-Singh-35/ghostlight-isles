@@ -6,8 +6,13 @@ export interface Intro {
   readonly visible: boolean;
 }
 
-/** The title screen shown while the camera circles the ship. */
-export function createIntro(parent: HTMLElement, onStart: () => void): Intro {
+export interface IntroShortcut {
+  readonly label: string;
+  readonly run: () => void;
+}
+
+/** The title screen shown while the camera circles the ship, with quick ways in for judges. */
+export function createIntro(parent: HTMLElement, onStart: () => void, shortcuts: readonly IntroShortcut[] = []): Intro {
   const root = el('div', 'intro');
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-labelledby', 'intro-title');
@@ -38,8 +43,6 @@ export function createIntro(parent: HTMLElement, onStart: () => void): Intro {
   const hint = el('p', 'intro-hint', 'or press W');
 
   root.append(title, tagline, story, keys, button, hint);
-  parent.append(root);
-
   let visible = true;
   const hide = () => {
     if (!visible) return;
@@ -47,6 +50,22 @@ export function createIntro(parent: HTMLElement, onStart: () => void): Intro {
     root.classList.add('intro-hidden');
     window.setTimeout(() => root.remove(), 900);
   };
+
+  if (shortcuts.length) {
+    const quick = el('div', 'intro-quick');
+    quick.append(el('span', 'intro-quick-label', 'Short on time? Jump straight in:'));
+    for (const shortcut of shortcuts) {
+      const link = el('button', 'ghost-button', shortcut.label);
+      link.type = 'button';
+      link.addEventListener('click', () => {
+        hide();
+        shortcut.run();
+      });
+      quick.append(link);
+    }
+    root.append(quick);
+  }
+  parent.append(root);
   button.addEventListener('click', () => {
     hide();
     onStart();

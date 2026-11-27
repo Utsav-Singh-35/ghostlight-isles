@@ -11,6 +11,8 @@ export interface Ocean {
   update(centerX: number, centerZ: number, time: number): void;
   /** Sets one light pool on the water. A radius of 0 turns it off. */
   setLight(index: number, position: THREE.Vector3, radius: number, color: THREE.Color, strength: number): void;
+  /** Sets the moonlight and horizon colors (for the Blood Moon). */
+  setColors(moon: THREE.Color, horizon: THREE.Color): void;
   dispose(): void;
 }
 
@@ -147,6 +149,10 @@ export function createOcean(cellSize: number, moonDir: THREE.Vector3): Ocean {
     setLight(index, position, radius, color, strength) {
       lightPos[index]?.set(position.x, position.y, position.z, radius);
       lightColor[index]?.copy(color).multiplyScalar(strength);
+    },
+    setColors(moon, horizon) {
+      (uniforms.uMoonColor!.value as THREE.Color).copy(moon);
+      (uniforms.uHorizon!.value as THREE.Color).copy(horizon);
     },
     dispose() {
       geometry.dispose();

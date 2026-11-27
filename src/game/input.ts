@@ -1,73 +1,105 @@
 import { SHIP } from '../sim/balance';
+import { FLAG, type BattleInput } from '../sim/battle';
 import type { ShipInput } from '../sim/ship';
 
-const RAISE = new Set(['KeyW', 'ArrowUp']);
-const LOWER = new Set(['KeyS', 'ArrowDown']);
-const PORT = new Set(['KeyA', 'ArrowLeft']);
-const STARBOARD = new Set(['KeyD', 'ArrowRight']);
-const GAME_KEYS = new Set([...RAISE, ...LOWER, ...PORT, ...STARBOARD]);
+const RAISE = ['KeyW', 'ArrowUp'];
+const LOWER = ['KeyS', 'ArrowDown'];
+const PORT = ['KeyA', 'ArrowLeft'];
+const STARBOARD = ['KeyD', 'ArrowRight'];
+const SAILING_KEYS = new Set([...RAISE, ...LOWER, ...PORT, ...STARBOARD]);
+/** Keys the game uses, so the browser doesn't scroll or switch focus on them. */
+const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'Space', 'Tab']);
 
-export interface KeyboardInput {
-  /** The input for the next simulation tick. */
-  snapshot(): ShipInput;
-  /** The sail order shown in the HUD. */
-  readonly sailLevel: number;
-  /** Called once for the first sail or steering key press. */
-  onFirstGameKey(callback: () => void): void;
-  /** While disabled (for example during the intro), key presses are ignored. */
-  setEnabled(enabled: boolean): void;
-  dispose(): void;
-}
+/** Keyboard state for sailing and battles, plus one-shot key handlers for menus. */
+export class Keyboard {
+  private readonly held = new Set<string>();
+  private readonly handlers = new Map<string, Array<() => void>>();
+  private firstKey: (() => void) | null = null;
+  private retreat = false;
+  /** The sail order: 0 Furled, 1 Half sail, 2 Full sail. */
+  sailLevel = 0;
+  /** True while Salt Shot is loaded instead of cannonballs. */
+  salt = false;
+  /** While false, sailing and battle keys are ignored (menus and the title screen). */
+  enabled = true;
 
-/** Sail order changes one step per key press; the rudder follows the keys held down. */
-export function createKeyboardInput(target: Window): KeyboardInput {
-  const held = new Set<string>();
-  let sailLevel = 0;
-  let enabled = true;
-  let firstKey: (() => void) | null = null;
-
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (!GAME_KEYS.has(event.code)) return;
-    event.preventDefault();
-    if (firstKey) {
-      const callback = firstKey;
-      firstKey = null;
+  private readonly onKeyDown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+    if (CAPTURED.has(event.code)) event.preventDefault();
+    if (this.firstKey && SAILING_KEYS.has(event.code)) {
+      const callback = this.firstKey;
+      this.firstKey = null;
       callback();
     }
-    if (!enabled) return;
-    held.add(event.code);
+    if (!event.repeat) for (const handler of this.handlers.get(event.code) ?? []) handler();
+    if (!this.enabled) return;
+    this.held.add(event.code);
     if (event.repeat) return;
-    if (RAISE.has(event.code)) sailLevel = Math.min(SHIP.maxSailLevel, sailLevel + 1);
-    if (LOWER.has(event.code)) sailLevel = Math.max(0, sailLevel - 1);
+    if (RAISE.includes(event.code)) this.sailLevel = Math.min(SHIP.maxSailLevel, this.sailLevel + 1);
+    if (LOWER.includes(event.code)) this.sailLevel = Math.max(0, this.sailLevel - 1);
   };
-  const onKeyUp = (event: KeyboardEvent) => held.delete(event.code);
-  const onBlur = () => held.clear();
+  private readonly onKeyUp = (event: KeyboardEvent) => this.held.delete(event.code);
+  private readonly onBlur = () => this.held.clear();
 
-  target.addEventListener('keydown', onKeyDown);
-  target.addEventListener('keyup', onKeyUp);
-  target.addEventListener('blur', onBlur);
+  constructor(private readonly target: Window) {
+    target.addEventListener('keydown', this.onKeyDown);
+    target.addEventListener('keyup', this.onKeyUp);
+    target.addEventListener('blur', this.onBlur);
+  }
 
-  const holding = (keys: Set<string>) => [...keys].some((key) => held.has(key));
+  private holding(codes: readonly string[]): boolean {
+    return codes.some((code) => this.held.has(code));
+  }
 
-  return {
-    snapshot() {
-      const rudder = (holding(STARBOARD) ? 1 : 0) - (holding(PORT) ? 1 : 0);
-      return { rudder, sailLevel };
-    },
-    get sailLevel() {
-      return sailLevel;
-    },
-    onFirstGameKey(callback) {
-      firstKey = callback;
-    },
-    setEnabled(value) {
-      enabled = value;
-      if (!value) held.clear();
-    },
-    dispose() {
-      target.removeEventListener('keydown', onKeyDown);
-      target.removeEventListener('keyup', onKeyUp);
-      target.removeEventListener('blur', onBlur);
-    },
-  };
+  /** Runs `handler` every time `code` is pressed. Returns a function that removes it. */
+  on(code: string, handler: () => void): () => void {
+    const list = this.handlers.get(code) ?? [];
+    list.push(handler);
+    this.handlers.set(code, list);
+    return () => this.handlers.set(code, (this.handlers.get(code) ?? []).filter((h) => h !== handler));
+  }
+
+  /** Called once, on the first sailing key press. */
+  onFirstSailingKey(callback: () => void): void {
+    this.firstKey = callback;
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.held.clear();
+  }
+
+  /** Input for one sailing tick. */
+  shipInput(): ShipInput {
+    const rudder = (this.holding(STARBOARD) ? 1 : 0) - (this.holding(PORT) ? 1 : 0);
+    return { rudder, sailLevel: this.sailLevel };
+  }
+
+  /** Asks to retreat; sent with the next battle tick. */
+  requestRetreat(): void {
+    this.retreat = true;
+  }
+
+  /** Input for one battle tick: steering, sails, held weapons and the loaded ammo. */
+  battleInput(): BattleInput {
+    const { rudder, sailLevel } = this.shipInput();
+    let flags = 0;
+    if (this.enabled) {
+      if (this.held.has('KeyQ')) flags |= FLAG.port;
+      if (this.held.has('KeyE')) flags |= FLAG.starboard;
+      if (this.held.has('KeyF')) flags |= FLAG.barrel;
+      if (this.held.has('KeyB')) flags |= FLAG.bats;
+    }
+    if (this.salt) flags |= FLAG.salt;
+    if (this.retreat) flags |= FLAG.retreat;
+    this.retreat = false;
+    return { rudder, sailLevel, flags };
+  }
+
+  dispose(): void {
+    this.target.removeEventListener('keydown', this.onKeyDown);
+    this.target.removeEventListener('keyup', this.onKeyUp);
+    this.target.removeEventListener('blur', this.onBlur);
+  }
 }

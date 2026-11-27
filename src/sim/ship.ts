@@ -1,4 +1,4 @@
-import { MAX_STEP_SECONDS, SHIP } from './balance';
+import { MAX_STEP_SECONDS, SHIP, type ShipStats } from './balance';
 import { clamp, finiteOr, moveToward, wrapAngle } from './math';
 
 /** The captain's sail order: 0 Furled, 1 Half sail, 2 Full sail. */
@@ -46,21 +46,25 @@ export function sanitizeDt(dt: number): number {
   return clamp(finiteOr(dt, 0), 0, MAX_STEP_SECONDS);
 }
 
-/** Advances one ship by one step in open water. Collisions are handled by the world. */
-export function stepShip(ship: ShipState, input: ShipInput, dtIn: number): ShipState {
+/**
+ * Advances one ship by one step in open water. Collisions are handled by the world.
+ * `stats` is the ship's handling; ghost ships pass their own.
+ */
+export function stepShip(ship: ShipState, input: ShipInput, dtIn: number, stats: ShipStats = SHIP): ShipState {
   const dt = sanitizeDt(dtIn);
   const order = sanitizeInput(input);
 
-  const sail = moveToward(ship.sail, order.sailLevel / SHIP.maxSailLevel, SHIP.sailRate * dt);
-  const rudder = moveToward(ship.rudder, order.rudder, SHIP.rudderRate * dt);
+  const sail = moveToward(ship.sail, order.sailLevel / SHIP.maxSailLevel, stats.sailRate * dt);
+  const rudder = moveToward(ship.rudder, order.rudder, stats.rudderRate * dt);
 
-  const targetSpeed = SHIP.maxSpeed * sail * (1 - SHIP.turnDrag * Math.abs(rudder));
-  const rate = ship.speed < targetSpeed ? SHIP.accel : SHIP.decel;
+  const targetSpeed = stats.maxSpeed * sail * (1 - stats.turnDrag * Math.abs(rudder));
+  const rate = ship.speed < targetSpeed ? stats.accel : stats.decel;
+  // A ship faster than its current top speed (a slowed ghost) sheds speed at `decel`.
   const speed = clamp(moveToward(ship.speed, targetSpeed, rate * dt), 0, SHIP.maxSpeed);
 
   const steerage =
-    SHIP.minSteerage + (1 - SHIP.minSteerage) * clamp(speed / SHIP.steerageSpeed, 0, 1);
-  const heading = wrapAngle(ship.heading - rudder * SHIP.maxTurnRate * steerage * dt);
+    stats.minSteerage + (1 - stats.minSteerage) * clamp(speed / stats.steerageSpeed, 0, 1);
+  const heading = wrapAngle(ship.heading - rudder * stats.maxTurnRate * steerage * dt);
 
   const x = ship.x + Math.sin(heading) * speed * dt;
   const z = ship.z + Math.cos(heading) * speed * dt;

@@ -53,7 +53,7 @@ const HOME_COLORS: Colors = { sand: PALETTE.homeSand, moss: PALETTE.homeMoss, ro
 const HAUNTED_COLORS: Colors = { sand: PALETTE.hauntedSand, moss: PALETTE.hauntedMoss, rock: PALETTE.hauntedRock };
 
 /** A jittered radial island: underwater skirt, beach, hill and peak, colored per face. */
-function buildTerrain(island: Island, rng: Rng): { geometry: THREE.BufferGeometry; peak: number } {
+export function buildTerrain(island: Island, rng: Rng): { geometry: THREE.BufferGeometry; peak: number } {
   const home = island.kind === 'home';
   const colors = home ? HOME_COLORS : HAUNTED_COLORS;
   const r = island.radius;
@@ -205,7 +205,7 @@ function lanternPostGeometry(): THREE.BufferGeometry {
   return b.build();
 }
 
-function lighthouseGeometry(): { body: THREE.BufferGeometry; lanternHeight: number } {
+export function lighthouseGeometry(): { body: THREE.BufferGeometry; lanternHeight: number } {
   const b = new MeshBuilder();
   const stone = '#B8B2A4';
   const band = '#7A2E2A';

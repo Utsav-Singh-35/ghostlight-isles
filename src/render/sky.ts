@@ -7,6 +7,8 @@ export interface Sky {
   readonly stars: THREE.Points;
   /** Keeps the sky centred on the camera, and twinkles the stars. */
   update(camera: THREE.Camera, time: number): void;
+  /** Sets the sky's colors (for the Blood Moon). */
+  setColors(top: THREE.Color, horizon: THREE.Color, moon: THREE.Color): void;
   setPixelRatio(ratio: number): void;
   dispose(): void;
 }
@@ -144,6 +146,11 @@ export function createSky(moonDir: THREE.Vector3, starCount: number): Sky {
     },
     setPixelRatio(ratio) {
       starMaterial.uniforms.uPixelRatio!.value = ratio;
+    },
+    setColors(top, horizon, moon) {
+      (domeMaterial.uniforms.uTop!.value as THREE.Color).copy(top);
+      (domeMaterial.uniforms.uHorizon!.value as THREE.Color).copy(horizon);
+      (domeMaterial.uniforms.uMoonColor!.value as THREE.Color).copy(moon);
     },
     dispose() {
       dome.geometry.dispose();
