@@ -8,7 +8,7 @@ Each feature gets its own spec in `.kiro/specs/`, passes its tests and the smoke
 - [x] **F1 Sailing** (spec `sailing`): 3D night sea, sky, fog, islands, a ship with two crew, sailing and steering, chase camera, HUD, intro screen, Low/High graphics. Fri Nov 27.
 - [x] **F2 Combat core** (spec `combat`): deterministic battle simulation (cannons, towers, damage, sinking) with property tests, and the 3D battle view. Sat Nov 28.
 - [ ] **F3 Capturing islands** (spec `island-capture`): fort battles and the Lantern Lines puzzle. Sun Nov 29.
-- [ ] **F4 Accounts and saving** (spec `persistence`): guest login and saved progress with Supabase. Sun Nov 29.
+- [x] **F4 Accounts and saving** (spec `persistence`): guest login and saved progress, served by a Netlify Function with Netlify Blobs, or offline in the browser. Sun Nov 29.
 - [ ] **F5 Base building** (spec `base-building`): place and upgrade defenses on the home island, resources and storage. Mon Nov 30.
 - [ ] **F6 Raids** (spec `raids`): raid saved islands, server replay check in a Netlify Function, raid reports, protection timer, leaderboard. Tue Dec 1.
 - [ ] **F7 Ghost fleet** (spec `ghost-fleet`): the Blood Moon clock, ghost raids on the weakest island, cursed gold, Salt Shot and Spirit Lanterns. Tue Dec 1.

@@ -21,9 +21,11 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.12",
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@netlify/functions": "^6.1.2",
     "@types/node": "^26.6.11",
     "@types/three": "^0.187.0",
     "fast-check": "^4.11.0",

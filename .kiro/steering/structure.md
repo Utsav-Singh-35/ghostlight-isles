@@ -14,12 +14,17 @@ inclusion: always
 | `src/render/` | Three.js scene, ocean, sky, islands, ships, camera. Reads simulation state only |
 | `src/game/` | Glue: the fixed-timestep loop, keyboard input, interpolation between simulation states |
 | `src/ui/` | DOM overlay: HUD, menus, buttons |
+| `src/server/` | The game server's rules: router, accounts, and one module per feature. Pure web standards |
+| `src/net/` | Client side of the server: online or offline backend, the signed-in session |
+| `netlify/functions/` | The Netlify Function that runs `src/server/api.ts` with Netlify Blobs |
 
 ## Import rules
 - `sim` imports nothing from `render`, `game`, `ui` or `three`.
 - `render` may import types and pure helpers from `sim`.
 - `game` connects `sim`, `render` and `ui`.
 - `ui` uses plain DOM, with no UI framework.
+- `server` imports `sim` only. Feature routes register themselves with `route()` from `server/router.ts`, and `server/api.ts` imports each feature module.
+- `net` imports `server` (for offline play) and `sim` types.
 
 ## Naming
 - Source files use camelCase (`shipMesh.ts`), one main export per file.

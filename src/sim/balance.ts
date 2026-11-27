@@ -185,6 +185,110 @@ export const DAMAGE_VS: Readonly<Record<ShotKind, Readonly<Record<TargetClass, n
   mine: { living: 1, ghost: 1, structure: 0 },
 };
 
+// ---- Progress -------------------------------------------------------------------------
+
+export interface Cost {
+  readonly gold: number;
+  readonly ectoplasm: number;
+}
+
+export const ECONOMY = {
+  start: { gold: 600, cursedGold: 0, ectoplasm: 30 },
+  /** Storage by home level − 1. Gold and cursed gold share the gold cap. */
+  goldCap: [3000, 7000, 15000],
+  ectoplasmCap: [300, 700, 1500],
+  /** Cost to raise the home island to level 2, then to level 3. */
+  homeUpgrade: [
+    { gold: 1500, ectoplasm: 0 },
+    { gold: 4000, ectoplasm: 120 },
+  ],
+  /** Gold each captured island pays per minute. */
+  tributePerMinute: 12,
+  maxReports: 20,
+  /** Hull health by hull level − 1. */
+  hull: [160, 210, 270],
+  nameMinLength: 2,
+  nameMaxLength: 20,
+} as const;
+
+/** Building costs: level 1 is the cost to build, levels 2 and 3 the cost to upgrade. */
+export const COSTS = {
+  cannonTower: [{ gold: 200, ectoplasm: 0 }, { gold: 450, ectoplasm: 0 }, { gold: 900, ectoplasm: 0 }],
+  spiritLantern: [{ gold: 150, ectoplasm: 20 }, { gold: 350, ectoplasm: 40 }, { gold: 700, ectoplasm: 90 }],
+  boneCatapult: [{ gold: 450, ectoplasm: 0 }, { gold: 900, ectoplasm: 0 }, { gold: 1700, ectoplasm: 0 }],
+  mine: [{ gold: 100, ectoplasm: 0 }, { gold: 220, ectoplasm: 0 }, { gold: 450, ectoplasm: 0 }],
+  /** Ship upgrades: cost to reach level 1 (unlock), 2 and 3. Null where a ship starts with that level. */
+  cannon: [null, { gold: 600, ectoplasm: 0 }, { gold: 1500, ectoplasm: 0 }],
+  salt: [null, { gold: 300, ectoplasm: 30 }, { gold: 900, ectoplasm: 80 }],
+  barrel: [{ gold: 400, ectoplasm: 0 }, { gold: 800, ectoplasm: 0 }, { gold: 1600, ectoplasm: 0 }],
+  bats: [{ gold: 0, ectoplasm: 60 }, { gold: 0, ectoplasm: 120 }, { gold: 0, ectoplasm: 240 }],
+  hull: [null, { gold: 700, ectoplasm: 0 }, { gold: 1800, ectoplasm: 60 }],
+  /** Removing a defense returns this share of everything spent on it. */
+  refund: 0.5,
+  /** Lowest home level that can build each defense. */
+  unlockLevel: { cannonTower: 1, spiritLantern: 1, boneCatapult: 2, mine: 1 },
+} as const;
+
+export const REWARDS = {
+  /** Capturing a fort, by its difficulty − 1. */
+  captureGold: [300, 500, 800],
+  captureEctoplasm: [10, 20, 35],
+  /** A raid takes at most this share of the defender's storage, scaled by destruction. */
+  raidShare: 0.3,
+  infamyPerStar: 10,
+  infamyPerCapture: 25,
+  infamyPerGhostShip: 5,
+  /** An island raided by a player can't be raided again for this long. */
+  raidProtectionHours: 4,
+  /** Loot from each ghost ship sunk. */
+  ghostShipCursedGold: 40,
+  ghostShipEctoplasm: 8,
+  /** Rival captains' storage refills to this share of their cap. */
+  rivalFill: 0.6,
+} as const;
+
+export const BLOOD_MOON = {
+  /** A Blood Moon rises every period and stays red for its duration, for every player at once. */
+  periodSeconds: 1200,
+  durationSeconds: 180,
+  /** A player may summon their own Blood Moon this often. */
+  summonCooldownSeconds: 120,
+  /** Ghost fleet size: this many ships, plus one per this much cursed gold held. */
+  baseFleet: 2,
+  cursedGoldPerExtraShip: 150,
+  /** After a ghost raid the fleet leaves the island alone this long, unless summoned. */
+  restMinutes: 10,
+  /** Cleansing cursed gold at the chapel takes this long. */
+  cleanseSeconds: 600,
+} as const;
+
+export const CREW = {
+  /** A crew member who dies returns as a ghost for this many battles. */
+  ghostBattles: 3,
+  /** Keeping a ghost crew member for another round of battles. */
+  keepGhostCost: { gold: 0, ectoplasm: 40 },
+  /** Hiring a new living crew member. */
+  hireCost: { gold: 150, ectoplasm: 0 },
+} as const;
+
+export const LOCKER = {
+  /** Time to solve the escape puzzle, seconds. */
+  puzzleSeconds: 90,
+  ferrymanCost: { gold: 0, ectoplasm: 30 },
+  /** Failing to escape costs this share of your gold. */
+  goldLostOnFailure: 0.2,
+} as const;
+
+export const PUZZLE = {
+  size: 5,
+  totems: 3,
+  decoys: 4,
+  minPath: 9,
+  minTurns: 3,
+  /** Attempts the generator makes before falling back to a simple layout. */
+  attempts: 400,
+} as const;
+
 /** Where towers and mines stand. */
 export const LAYOUT = {
   /** Tower slots sit on a ring at this share of the island's radius. */

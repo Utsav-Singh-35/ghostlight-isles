@@ -4,8 +4,11 @@ import { fortLayout } from '../sim/layout';
 import { hashSeed } from '../sim/rng';
 import type { ShipState } from '../sim/ship';
 import { createWorldState, generateWorld, isAground, stepWorld, type World, type WorldState } from '../sim/world';
+import { Session } from '../net/session';
+import type { PublicProfile } from '../sim/profile';
 import { GameRenderer, type Quality, type RenderStats } from '../render/gameRenderer';
 import { BattleHud } from '../ui/battleHud';
+import { CaptainBar } from '../ui/captainBar';
 import { el } from '../ui/dom';
 import { createHud, type Hud } from '../ui/hud';
 import { createIntro, type Intro } from '../ui/intro';
@@ -24,6 +27,8 @@ export interface AppOptions {
   readonly seedText: string;
   readonly skipIntro: boolean;
   readonly scenario: string | null;
+  /** Play offline even if a server answers (for testing the offline path). */
+  readonly offline: boolean;
 }
 
 /** A battle to fight: its setup, what to show, and what to do with the outcome. */
@@ -51,7 +56,11 @@ export class App {
   private readonly slow: Notice;
   private readonly battleHud: BattleHud;
   private readonly results: ResultScreen;
+  private readonly captainBar: CaptainBar;
+  private readonly notice: Notice;
   private readonly intro: Intro | null;
+  /** The signed-in captain, once the server (or offline save) has answered. */
+  session: Session | null = null;
   private readonly loop: FixedLoop;
   private previous: WorldState;
   private current: WorldState;
@@ -86,6 +95,20 @@ export class App {
     this.slow = createNotice(this.overlay, 'notice-slow');
     this.battleHud = new BattleHud(this.overlay, () => this.keyboard.requestRetreat());
     this.results = new ResultScreen(this.overlay);
+    this.captainBar = new CaptainBar(this.overlay);
+    this.notice = createNotice(this.overlay, 'notice-info');
+    Session.start(options.offline)
+      .then((session) => {
+        this.session = session;
+        session.onChange((profile) => this.onProfile(profile));
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        this.notice.show('Your captain could not be loaded. You can still sail; progress will not be saved.', {
+          label: 'Retry',
+          run: () => window.location.reload(),
+        });
+      });
     this.keyboard.on('KeyR', () => {
       if (this.mode === 'battle') this.keyboard.salt = !this.keyboard.salt;
     });
@@ -118,6 +141,13 @@ export class App {
     this.keyboard.setEnabled(true);
     this.hud.setVisible(true);
     this.labels.setVisible(true);
+    this.captainBar.setVisible(this.session !== null);
+  }
+
+  /** Called whenever the captain's profile changes. */
+  private onProfile(profile: PublicProfile): void {
+    this.captainBar.set(profile, this.session?.online ?? false);
+    this.captainBar.setVisible(this.mode === 'sail');
   }
 
   private step(): void {
@@ -190,6 +220,7 @@ export class App {
     this.keyboard.salt = ticket.setup.mode === 'siege' && ticket.setup.loadout.salt > 0;
     this.hud.setVisible(false);
     this.labels.setVisible(false);
+    this.captainBar.setVisible(false);
     this.aground.show(null);
     this.renderer.enterBattle(this.runner.current);
     this.battleHud.show({ title: ticket.title, objective: ticket.objective }, ticket.setup.mode === 'assault');
@@ -228,6 +259,7 @@ export class App {
     this.keyboard.salt = false;
     this.hud.setVisible(true);
     this.labels.setVisible(true);
+    this.captainBar.setVisible(this.session !== null);
   }
 
   /** Practice battles, for judges and for the title screen's shortcuts. */
@@ -305,6 +337,11 @@ export class App {
         };
       },
       resultShowing: () => this.results.visible,
+      captain: () => {
+        const s = this.session;
+        if (!s) return null;
+        return { name: s.profile.name, online: s.online, resources: { ...s.profile.resources }, captured: [...s.profile.captured], defenses: s.profile.defenses.length };
+      },
     };
   }
 }

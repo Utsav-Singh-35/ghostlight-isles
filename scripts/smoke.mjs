@@ -1,41 +1,21 @@
-// Browser smoke test: serves the production build, drives the game in the installed Chrome or Edge,
-// checks it really works and stays inside the performance budget, and saves screenshots.
+// Browser smoke test: serves the production build with Vite's preview server (which also serves the
+// game API at /api, like Netlify), drives the game in the installed Chrome or Edge, checks it really
+// works and stays inside the performance budget, and saves screenshots.
 // Usage: npm run build && npm run smoke
-import { createServer } from 'node:http';
-import { mkdir, readFile, stat } from 'node:fs/promises';
-import { extname, join, resolve, sep } from 'node:path';
+import { mkdir, stat } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { chromium } from 'playwright-core';
+import { preview } from 'vite';
 
 const DIST = resolve('dist');
 const SHOTS = resolve('Documents', 'screenshots');
 const BUDGET = { drawCalls: 150, pointLights: 4 };
 const SPAWN = { x: 0, z: 85 };
-const TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.json': 'application/json',
-  '.map': 'application/json',
-  '.png': 'image/png',
-  '.glb': 'model/gltf-binary',
-};
 
-function startServer() {
-  const server = createServer(async (req, res) => {
-    try {
-      const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
-      const file = resolve(join(DIST, path === '/' ? 'index.html' : path));
-      if (!file.startsWith(DIST + sep) && file !== DIST) throw new Error('outside dist');
-      const info = await stat(file);
-      if (!info.isFile()) throw new Error('not a file');
-      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' });
-      res.end(await readFile(file));
-    } catch {
-      res.writeHead(404).end('Not found');
-    }
-  });
-  return new Promise((done) => server.listen(0, '127.0.0.1', () => done(server)));
+async function startServer() {
+  const server = await preview({ logLevel: 'silent', preview: { port: 4317, strictPort: false, open: false, host: '127.0.0.1' } });
+  const url = server.resolvedUrls?.local[0] ?? 'http://127.0.0.1:4317/';
+  return { server, base: url.replace(/\/$/, '') };
 }
 
 async function launchBrowser() {
@@ -78,8 +58,7 @@ async function main() {
     throw new Error('No production build found. Run `npm run build` first.');
   });
   await mkdir(SHOTS, { recursive: true });
-  const server = await startServer();
-  const base = `http://127.0.0.1:${server.address().port}`;
+  const { server, base } = await startServer();
   const browser = await launchBrowser();
   const errors = [];
   const report = {};
@@ -93,6 +72,14 @@ async function main() {
       return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown';
     });
     await sleep(2500);
+    const captain = await page.evaluate(() => window.__ghostlight.captain());
+    check(captain && captain.online === true && captain.name.length > 1, `a guest captain is created online (${captain?.name})`);
+    check(captain && captain.resources.gold === 600, 'a new captain starts with 600 gold');
+    await page.reload();
+    await page.waitForFunction(() => window.__ghostlight?.ready === true && window.__ghostlight.captain() !== null, null, { timeout: 30000 });
+    const again = await page.evaluate(() => window.__ghostlight.captain());
+    check(again && captain && again.name === captain.name, 'the captain is remembered after a reload');
+    await sleep(1500);
     check(await page.locator('.intro').isVisible(), 'the title screen shows on load');
     check((await page.evaluate(() => window.__ghostlight.mode)) === 'intro', 'the camera circles the ship during the intro');
     await page.screenshot({ path: join(SHOTS, '01-intro.png') });
@@ -133,6 +120,14 @@ async function main() {
     check(lowStats.pixelRatio === 1, 'Low graphics uses pixel ratio 1');
     check(lowStats.drawCalls <= BUDGET.drawCalls, `Low: ${lowStats.drawCalls} draw calls (budget ${BUDGET.drawCalls})`);
     await low.close();
+
+    // With no server, the same rules run in the browser and save to localStorage.
+    const offline = await openGame(browser, base, '?seed=smoke-test&skipIntro&offline', errors);
+    await offline.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 }).catch(() => {});
+    const local = await offline.evaluate(() => window.__ghostlight.captain());
+    check(local && local.online === false && local.resources.gold === 600, 'offline play creates a captain saved on this device');
+    check(await offline.locator('.cb-status').textContent().then((t) => t === 'Saved on this device'), 'the HUD says progress is saved on this device');
+    await offline.close();
 
     // A fort battle: sail in at full sail, fire both broadsides, then retreat.
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);
@@ -176,7 +171,7 @@ async function main() {
     check(errors.length === 0, `no console errors${errors.length ? `: ${errors.slice(0, 5).join(' | ')}` : ''}`);
   } finally {
     await browser.close();
-    server.close();
+    await server.close();
   }
 
   console.log(JSON.stringify(report, null, 2));

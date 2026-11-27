@@ -64,6 +64,7 @@ function main(): void {
         seedText: params.get('seed') || WORLD.defaultSeed,
         skipIntro: params.has('skipIntro'),
         scenario: params.get('scenario'),
+        offline: params.has('offline'),
       },
       switchQuality,
     );
@@ -84,6 +85,7 @@ function main(): void {
     ship: debug.ship,
     battle: debug.battle,
     resultShowing: debug.resultShowing,
+    captain: debug.captain,
   });
 }
 

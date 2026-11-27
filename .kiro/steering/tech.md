@@ -7,7 +7,8 @@ inclusion: always
 - TypeScript (strict), bundled by Vite. Node 22 for tooling.
 - Three.js with `WebGLRenderer` (WebGL 2 only). Import addons from `three/addons/...`.
 - Vitest for tests, fast-check for property-based tests.
-- Netlify for hosting, and Netlify Functions for server code later. Supabase for login and the Postgres database later. Use the Kiro powers for Netlify and Supabase when working on those parts.
+- Netlify for hosting. The game server is one Netlify Function (`netlify/functions/api.mts`) that stores profiles in Netlify Blobs. We chose Blobs over Supabase on Nov 27 because Blobs needs no extra account or keys, so deploying stays a one-click job. Use the Kiro power for Netlify when working on deployment.
+- The server's rules live in `src/server/` and use only web standards (`Request`, `Response`, `crypto`), so the same handler runs on Netlify, in Vite's dev and preview servers (`src/server/devMiddleware.ts`) and in the browser when offline (`src/net/backend.ts`). Never use Node-only APIs in `src/server/` except in `devMiddleware.ts`.
 
 ## Commands
 | Task | Command |

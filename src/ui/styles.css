@@ -347,6 +347,74 @@ kbd {
   display: none;
 }
 
+/* ---- Captain bar ---- */
+.captain-bar {
+  position: absolute;
+  top: 3.1rem;
+  left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  text-shadow: 0 1px 3px #000;
+}
+
+.captain-bar[hidden],
+.cb-cursed[hidden] {
+  display: none;
+}
+
+.cb-name {
+  font: 400 1rem var(--title-font);
+  color: var(--bone);
+}
+
+.cb-resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cb-gold {
+  color: #ffd27a;
+}
+
+.cb-gold::before {
+  content: '● ';
+  color: #ffb347;
+}
+
+.cb-cursed {
+  color: #ff9a9a;
+}
+
+.cb-cursed::before {
+  content: '☠ ';
+  color: #c8102e;
+}
+
+.cb-ecto {
+  color: #c8ffe6;
+}
+
+.cb-ecto::before {
+  content: '◆ ';
+  color: var(--spectral);
+}
+
+.cb-status {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(227, 217, 194, 0.55);
+}
+
+.notice-info {
+  top: auto;
+  bottom: 6.5rem;
+}
+
 /* ---- Shared buttons ---- */
 .ghost-button {
   padding: 0.5rem 1.1rem;
