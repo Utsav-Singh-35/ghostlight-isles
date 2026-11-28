@@ -237,6 +237,41 @@ async function main() {
     check(!(await basePage.locator('.base-panel').isVisible()), 'Tab closes the base panel again');
     await basePage.close();
 
+    // Create an account from the Account panel, stay logged in after a reload, log out, log back in.
+    const acct = await openGame(browser, base, '?skipIntro', errors);
+    await acct.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });
+    const guestId = await acct.evaluate(() => window.__ghostlight.captain().name);
+    await acct.getByRole('button', { name: 'Account' }).click();
+    const createForm = acct.locator('.ac-form', { hasText: 'Create account' });
+    const username = `Smoke_${Date.now().toString(36).slice(-6)}`;
+    await createForm.getByLabel('Username').fill(username);
+    await createForm.getByLabel('Password').fill('short');
+    await createForm.getByRole('button', { name: 'Keep my captain' }).click();
+    await acct.waitForFunction(() => (document.querySelector('.ac-form .ac-error')?.textContent ?? '') !== '', null, { timeout: 10000 }).catch(() => {});
+    check(/Passwords need/.test((await createForm.locator('.ac-error').textContent()) ?? ''), 'the account form says why a short password is refused');
+    await createForm.getByLabel('Password').fill('lanterns-burn-late');
+    await createForm.getByRole('button', { name: 'Keep my captain' }).click();
+    await acct.waitForFunction((u) => window.__ghostlight.captain()?.username === u, username, { timeout: 15000 }).catch(() => {});
+    const afterRegister = await acct.evaluate(() => window.__ghostlight.captain());
+    check(afterRegister.username === username && afterRegister.name === username, `creating an account keeps the captain and names it ${username} (was ${guestId})`);
+    check(/· Guest/.test((await acct.locator('.cb-name').textContent()) ?? '') === false, 'the captain bar stops saying Guest');
+    await acct.reload();
+    await acct.waitForFunction(() => window.__ghostlight?.ready === true && window.__ghostlight.captain() !== null, null, { timeout: 30000 });
+    check((await acct.evaluate(() => window.__ghostlight.captain().username)) === username, 'a reload stays logged in');
+    await acct.getByRole('button', { name: username }).click();
+    await Promise.all([acct.waitForEvent('load'), acct.getByRole('button', { name: 'Log out' }).click()]);
+    await acct.waitForFunction(() => window.__ghostlight?.ready === true && window.__ghostlight.captain() !== null, null, { timeout: 30000 });
+    check((await acct.evaluate(() => window.__ghostlight.captain().username)) === null, 'logging out goes back to a guest');
+    await acct.getByRole('button', { name: 'Account' }).click();
+    const loginForm = acct.locator('.ac-form', { hasText: 'Log in' });
+    await loginForm.getByLabel('Username').fill(username.toLowerCase());
+    await loginForm.getByLabel('Password').fill('lanterns-burn-late');
+    await Promise.all([acct.waitForEvent('load'), loginForm.getByRole('button', { name: 'Log in' }).click()]);
+    await acct.waitForFunction(() => window.__ghostlight?.ready === true && window.__ghostlight.captain() !== null, null, { timeout: 30000 });
+    check((await acct.evaluate(() => window.__ghostlight.captain().username)) === username, 'logging in with the username in any case brings the captain back');
+    await acct.screenshot({ path: join(SHOTS, '17-account.png') });
+    await acct.close();
+
     // Raid a rival from the raid list, then read the Captain's Log.
     const raidPage = await openGame(browser, base, '?skipIntro', errors);
     await raidPage.waitForFunction(() => window.__ghostlight.captain() !== null, null, { timeout: 15000 });

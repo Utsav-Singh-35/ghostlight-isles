@@ -7,8 +7,8 @@ inclusion: always
 - TypeScript (strict), bundled by Vite. Node 22 for tooling.
 - Three.js with `WebGLRenderer` (WebGL 2 only). Import addons from `three/addons/...`.
 - Vitest for tests, fast-check for property-based tests.
-- Netlify for hosting. The game server is one Netlify Function (`netlify/functions/api.mts`) that stores profiles in Netlify Blobs. We chose Blobs over Supabase on Nov 27 because Blobs needs no extra account or keys, so deploying stays a one-click job. Use the Kiro power for Netlify when working on deployment.
-- The server's rules live in `src/server/` and use only web standards (`Request`, `Response`, `crypto`), so the same handler runs on Netlify, in Vite's dev and preview servers (`src/server/devMiddleware.ts`) and in the browser when offline (`src/net/backend.ts`). Never use Node-only APIs in `src/server/` except in `devMiddleware.ts`.
+- Netlify for hosting. The game server is one Netlify Function (`netlify/functions/api.mts`) that stores every record in MongoDB Atlas (database `ghostlight`) through `src/storage/mongoStore.ts`. On Nov 28 we moved from Netlify Blobs to MongoDB, at the owner's request, for real accounts: unique usernames need an atomic insert, and Atlas shows each captain as a readable document. The only server package is the `mongodb` driver: password hashes (PBKDF2) and login tokens (HS256 JWTs) use Web Crypto, with no extra libraries. Use the Kiro power for Netlify when working on deployment.
+- The server's rules live in `src/server/` and use only web standards (`Request`, `Response`, `crypto`), so the same handler runs on Netlify, in Vite's dev and preview servers (`src/server/devMiddleware.ts`) and in the browser when offline (`src/net/backend.ts`). Never use Node-only APIs in `src/server/` except in `devMiddleware.ts`. Node-only storage (the MongoDB driver) lives in `src/storage/`, which the browser never imports.
 
 ## Commands
 | Task | Command |
@@ -36,6 +36,6 @@ inclusion: always
 - The smoke test reads draw calls and point lights from the debug API and fails if the budget is broken.
 
 ## Security
-- No secrets in the repo. Keys go in Netlify or Supabase environment variables.
-- The client is untrusted. The server validates every raid result, cost and reward. Supabase tables use row-level security.
+- No secrets in the repo. `MONGODB_URI`, `MONGODB_DB` and `JWT_SECRET` go in Netlify's environment variables and a local `.env` (git ignores it; `.env.example` lists the names). Never print them, log them or paste them into tests.
+- The client is untrusted. The server validates every raid result, cost and reward, and every token.
 - Build DOM with `textContent`, never by putting player-supplied text into `innerHTML`.

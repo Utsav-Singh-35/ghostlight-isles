@@ -51,12 +51,30 @@ class OnlineBackend implements Backend {
   }
 }
 
+const OFFLINE_SECRET_KEY = 'ghostlight.offlineSecret';
+
+/** The key that signs offline tokens. They only ever meet this browser's own handler, so it stays on the device. */
+function offlineSecret(): string {
+  try {
+    const saved = window.localStorage.getItem(OFFLINE_SECRET_KEY);
+    if (saved && saved.length >= 32) return saved;
+    const fresh = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+    window.localStorage.setItem(OFFLINE_SECRET_KEY, fresh);
+    return fresh;
+  } catch {
+    return Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+}
+
 class OfflineBackend implements Backend {
   readonly kind = 'offline' as const;
   private readonly ctx: ServerContext = {
     store: new LocalStore(),
     now: () => Date.now(),
     random: () => crypto.getRandomValues(new Uint32Array(1))[0]!,
+    jwtSecret: offlineSecret(),
+    // A phone hashing 600,000 rounds would stall the page; offline accounts never leave the device.
+    passwordIterations: 100_000,
   };
 
   async request<T>(method: 'GET' | 'POST', path: string, body: unknown, token: string | null): Promise<T> {

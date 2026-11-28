@@ -25,6 +25,7 @@ Short on time? The title screen also has **Try a fort battle** and **Summon the 
 ## What's in the game
 
 - **Sailing:** a night sea with smooth wave lighting, ripples that catch the moon and lanterns, a reflected sky, whitecaps, surf along every coastline, fog and lantern light; 14 islands generated from a seed; three sail settings, steering with momentum and solid shores.
+- **Accounts:** play as a guest at once, then pick a unique username and password to keep your captain and log in from any device. Every captain is saved in MongoDB; passwords are salted PBKDF2 hashes and logins are signed tokens.
 - **Capturing islands:** break a haunted island's fort from your ship before dawn. Forts come in five levels, built from their seed as wooden stockades, ruins, curtain walls or star forts around a ghost spire, a broken lighthouse or a skull tower. Click a fort's name for its report. The reward adds gold for every gun silenced, for time left before dawn, for island ghosts sunk and for treasure vaults cracked; powder stores blow up the towers beside them. Captured islands pay gold every minute.
 - **Forts get harder the further you sail:** five fort levels, set by distance from Last Light. Harder islands are bigger, with taller walls, more and stronger towers, mines, a bigger keep and ghost ships that rise from the island to hunt you. A new ship takes the level-1 forts; level 5 needs a fully refitted ship.
 - **Base building on Last Light:** Cannon Towers, Spirit Lanterns (they reveal ghosts), Bone Catapults and Jack-o'-lantern Mines, three levels each, plus home upgrades for more slots and storage. The shipwright refits your hull, cannons, Salt Shot, Witchfire barrels, the Bat Swarm and the Pumpkin Mortar.
@@ -84,7 +85,7 @@ npm run dev        # http://localhost:5173, with the game server at /api
 | `npm run smoke` | Opens the build in your installed Chrome or Edge, plays through every feature, checks the performance budget and saves screenshots |
 | `npm run check:assets` | Checks that every third-party asset is credited with an allowed license |
 
-**Deploy:** on Netlify choose *Add new site → Import an existing project*, pick this repository and deploy. `netlify.toml` sets the build, and the game server (`netlify/functions/api.mts`) stores captains in Netlify Blobs, which needs no extra account or keys.
+**Deploy:** on Netlify choose *Add new site → Import an existing project*, pick this repository and deploy. `netlify.toml` sets the build, and the game server (`netlify/functions/api.mts`) stores captains in MongoDB. Before deploying, set `MONGODB_URI`, `MONGODB_DB` (`ghostlight`) and `JWT_SECRET` (at least 32 random characters) in the site's environment variables, and allow `0.0.0.0/0` under Network Access in Atlas. Without them the game still runs, saving on each player's device. For local development, copy `.env.example` to `.env`.
 
 ## How it's built
 
@@ -99,7 +100,7 @@ npm run dev        # http://localhost:5173, with the game server at /api
 
 Everything Kiro uses lives in [`.kiro/`](.kiro), and a running log of what each feature caught is in [Documents/kiro-usage-log.md](Documents/kiro-usage-log.md).
 
-- **Specs:** [eleven specs](.kiro/specs), one per game system, each written before its code: EARS requirements, a design with numbered correctness properties (70 in all), and tasks.
+- **Specs:** [twelve specs](.kiro/specs), one per game system, each written before its code: EARS requirements, a design with numbered correctness properties (77 in all), and tasks.
 - **Property-based tests:** every correctness property is a fast-check test with the same number and name. They found a floating-point bug in the wave phases, and they keep the server and the rules from drifting apart. Example and balance tests from the same specs found forts whose keeps were out of reach, twice.
 - **Steering:** product, tech and structure rules always load; simulation, rendering and testing conventions load only for matching files; the game design loads automatically for gameplay work, so balance numbers are always at hand.
 - **Hooks:** a session brief with the time left and the next feature; a commit gate that blocks commits unless tests, types and asset credits pass (it caught a test runner that only worked from some terminals); a simulation test run after every change to the game rules; and a credit check for new assets.

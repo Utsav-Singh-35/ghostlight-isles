@@ -31,7 +31,8 @@ export class CaptainBar {
   set(profile: PublicProfile, online: boolean, now = Date.now()): void {
     const caps = capsFor(profile.homeLevel);
     const r = profile.resources;
-    setText(this.name, `Captain ${profile.name}`);
+    setText(this.name, `Captain ${profile.name}${profile.username ? '' : ' · Guest'}`);
+    this.name.title = profile.username ? `Signed in as ${profile.username}` : 'A guest captain. Use Account to keep this captain on any device.';
     setText(this.gold, `${r.gold} gold`);
     this.gold.title = `Storage: ${r.gold + r.cursedGold} of ${caps.gold} gold`;
     setText(this.cursed, r.cursedGold > 0 ? `${r.cursedGold} cursed gold` : '');

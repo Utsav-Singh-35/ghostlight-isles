@@ -317,6 +317,23 @@ export const REWARDS = {
   rivalFill: 0.6,
 } as const;
 
+export const ACCOUNTS = {
+  /** Usernames: this many letters, digits or underscores, starting with a letter. */
+  usernameMinLength: 3,
+  usernameMaxLength: 16,
+  passwordMinLength: 8,
+  /** Long enough for passphrases; capped so hashing a huge body can't tie up the server. */
+  passwordMaxLength: 72,
+  /** PBKDF2-SHA256 rounds for new password hashes (OWASP's advice in 2023). */
+  passwordIterations: 600_000,
+  /** How long a login lasts. */
+  tokenDays: 30,
+  /** This many failed logins within the window locks the username for the lockout. */
+  maxLoginFailures: 5,
+  loginWindowMinutes: 15,
+  lockoutMinutes: 15,
+} as const;
+
 export const BLOOD_MOON = {
   /** A Blood Moon rises every period and stays red for its duration, for every player at once. */
   periodSeconds: 1200,

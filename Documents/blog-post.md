@@ -29,11 +29,11 @@ Real-time multiplayer was too much for one person in a week, but I wanted player
 
 That raises a problem. If the browser reports "I won", anyone can cheat. So the battle rules are a deterministic simulation: pure functions, a fixed 30 ticks per second, and randomness only from a seed. A battle is fully decided by its seed, the defender's layout and the attacker's inputs. The browser sends its inputs, the server replays the whole battle, and loot is paid only for what the replay says happened.
 
-The same server code runs in three places: as a Netlify Function that saves captains in Netlify Blobs, inside the local dev server, and in the browser when there's no connection. Judges never meet a broken page.
+The same server code runs in three places: as a Netlify Function that saves captains in MongoDB, inside the local dev server, and in the browser when there's no connection. Judges never meet a broken page.
 
 ## Spec first, with Kiro
 
-I built the game with Kiro, the AI IDE, and the most useful habit was writing each system down before any code. Every system, from sailing to the Locker, got a spec: requirements, a design with numbered "correctness properties", and tasks. Each property is a sentence like "a sunk ship can't capture, raid or fight a siege", and each one became a property-based test with the same number. The game has 70 of them.
+I built the game with Kiro, the AI IDE, and the most useful habit was writing each system down before any code. Every system, from sailing to the Locker, got a spec: requirements, a design with numbered "correctness properties", and tasks. Each property is a sentence like "a sunk ship can't capture, raid or fight a siege", and each one became a property-based test with the same number. The game has 77 of them.
 
 Property-based tests run a rule over hundreds of random inputs, and they found things I would never have written examples for. My favorite: the wave math returned exactly 2π instead of something just below it when the time was 5e-324 seconds, the smallest number a double can hold, because subtracting it from 2π rounds back to 2π. The test shrank its failure down to that one value, and it's now a regression test.
 

@@ -17,7 +17,7 @@ inclusion: always
 | `src/ui/` | DOM overlay: HUD, menus, buttons |
 | `src/server/` | The game server's rules: router, accounts, and one module per feature. Pure web standards |
 | `src/net/` | Client side of the server: online or offline backend, the signed-in session |
-| `netlify/functions/` | The Netlify Function that runs `src/server/api.ts` with Netlify Blobs |
+| `src/storage/` | Node-only stores for the server: MongoDB. Never imported by the browser |
 
 ## Import rules
 - `sim` imports nothing from `render`, `game`, `ui` or `three`.

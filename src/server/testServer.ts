@@ -3,6 +3,9 @@ import { handle } from './api';
 import { MemoryStore } from './memoryStore';
 import type { ServerContext } from './router';
 
+/** The secret test servers sign tokens with. */
+export const TEST_JWT_SECRET = 'test-secret-for-ghostlight-tests-only-0123456789';
+
 export interface TestServer {
   readonly store: MemoryStore;
   readonly ctx: ServerContext;
@@ -18,7 +21,14 @@ export function testServer(seed = 1, start = Date.UTC(2026, 10, 27, 12, 0, 0)): 
   const store = new MemoryStore();
   const rng = createRng(seed);
   let now = start;
-  const ctx: ServerContext = { store, now: () => now, random: () => Math.floor(rng.next() * 4294967296) >>> 0 };
+  const ctx: ServerContext = {
+    store,
+    now: () => now,
+    random: () => Math.floor(rng.next() * 4294967296) >>> 0,
+    jwtSecret: TEST_JWT_SECRET,
+    // Few PBKDF2 rounds, so password tests stay fast. Online it is ACCOUNTS.passwordIterations.
+    passwordIterations: 1000,
+  };
   const call: TestServer['call'] = async (method, path, body, token) => {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (token) headers.authorization = `Bearer ${token}`;

@@ -50,11 +50,30 @@ export interface Stats {
   readonly timesSunk: number;
 }
 
+/** A registered captain's login: kept on the server, never sent to the client. */
+export interface Credentials {
+  /** `pbkdf2-sha256$<iterations>$<salt>$<hash>`. */
+  readonly passwordHash: string;
+  /** Raised when a guest registers, so older tokens stop working. */
+  readonly tokenVersion: number;
+  /** Failed logins since `windowStart`, and the time the username is locked until. */
+  readonly failures: number;
+  readonly windowStart: number;
+  readonly lockedUntil: number;
+}
+
 export interface Profile {
   readonly version: 1;
   readonly id: string;
   readonly name: string;
+  /** Hash of a guest token's secret, for guest tokens issued before accounts. Empty for newer captains. */
   readonly tokenHash: string;
+  /** The unique username, for registered captains; missing for guests. */
+  readonly username?: string;
+  /** Missing for guests. */
+  readonly credentials?: Credentials;
+  /** Token version for guests (0 when missing). Registered captains keep theirs in `credentials`. */
+  readonly tokenVersion?: number;
   readonly createdAt: number;
   readonly resources: Resources;
   readonly homeLevel: DefenseLevel;
@@ -83,8 +102,8 @@ export interface Profile {
   readonly battle: PendingBattle | null;
 }
 
-/** A profile without its token hash: safe to send to the client. */
-export type PublicProfile = Omit<Profile, 'tokenHash'>;
+/** A profile without its secrets: safe to send to the client. */
+export type PublicProfile = Omit<Profile, 'tokenHash' | 'credentials' | 'tokenVersion'>;
 
 export function createProfile(id: string, name: string, tokenHash: string, now: number): Profile {
   return {
@@ -114,8 +133,10 @@ export function createProfile(id: string, name: string, tokenHash: string, now: 
 }
 
 export function publicProfile(profile: Profile): PublicProfile {
-  const { tokenHash: _hidden, ...rest } = profile;
-  void _hidden;
+  const { tokenHash: _hash, credentials: _credentials, tokenVersion: _version, ...rest } = profile;
+  void _hash;
+  void _credentials;
+  void _version;
   return rest;
 }
 

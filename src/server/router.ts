@@ -4,10 +4,17 @@
  */
 import type { Profile } from '../sim/profile';
 
-/** Where profiles are kept: Netlify Blobs online, localStorage offline, memory in tests. */
+/**
+ * Where records are kept: MongoDB online, localStorage offline, memory in tests and the preview
+ * server. Keys are `<kind>:<id>`; values are JSON text.
+ */
 export interface Store {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
+  /** Writes the value only if the key is new, atomically. Returns whether it did. */
+  create(key: string, value: string): Promise<boolean>;
+  /** Every record whose key starts with `prefix`, which must have the form `<kind>:`. */
+  list(prefix: string): Promise<Array<[key: string, value: string]>>;
 }
 
 export interface ServerContext {
@@ -16,6 +23,15 @@ export interface ServerContext {
   readonly now: () => number;
   /** A random unsigned 32-bit integer. */
   readonly random: () => number;
+  /** The key that signs login tokens. */
+  readonly jwtSecret: string;
+  /** PBKDF2 rounds for new password hashes. Tests lower it; online it is `ACCOUNTS.passwordIterations`. */
+  readonly passwordIterations?: number;
+}
+
+/** True for a list prefix of the form `<kind>:`. */
+export function isListPrefix(prefix: string): boolean {
+  return /^[a-z]+:$/.test(prefix);
 }
 
 /** An error with an HTTP status and a message that is safe to show to the player. */

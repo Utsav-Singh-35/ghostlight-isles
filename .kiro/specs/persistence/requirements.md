@@ -5,7 +5,7 @@ Accounts, saving and the game server. A player gets a guest captain on first vis
 
 ## Glossary
 - **Handler**: `src/server/api.ts`, a function from a web `Request` to a `Response`.
-- **Store**: where profiles are kept: Netlify Blobs online, localStorage offline, memory in tests and the dev server.
+- **Store**: where profiles are kept: MongoDB online (since the accounts spec; Netlify Blobs before), localStorage offline, memory in tests and the preview server.
 - **Profile**: one captain's saved progress.
 - **Token**: `<player id>.<secret>`; the server keeps only a hash of the secret.
 - **Resources**: gold, cursed gold and ectoplasm.

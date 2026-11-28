@@ -21,7 +21,7 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
-    "@netlify/blobs": "^11.1.12",
+    "mongodb": "^6.22.0",
     "three": "^0.187.0"
   },
   "devDependencies": {

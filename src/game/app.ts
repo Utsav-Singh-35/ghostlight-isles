@@ -29,6 +29,7 @@ import { PuzzleView } from '../ui/puzzleView';
 import { Toasts } from '../ui/toast';
 import { GameRenderer, type Quality, type RenderStats } from '../render/gameRenderer';
 import { BattleHud } from '../ui/battleHud';
+import { AccountPanel } from '../ui/accountPanel';
 import { CaptainBar } from '../ui/captainBar';
 import { el } from '../ui/dom';
 import { createHud, type Hud } from '../ui/hud';
@@ -113,6 +114,7 @@ export class App {
   private busy = false;
   private readonly basePanel: BasePanel;
   private readonly side: SidePanel;
+  private readonly account: AccountPanel;
   private readonly fleetNotice: Notice;
   private readonly locker: LockerView;
   /** How red the night is right now, easing toward the moon's state. */
@@ -169,6 +171,11 @@ export class App {
       { label: 'Log (L)', title: 'Reports and the leaderboard', run: () => void this.openLog('reports') },
       { label: 'Summon the Blood Moon', title: 'Call the ghost fleet to Last Light now instead of waiting for the shared Blood Moon', run: () => void this.summon() },
       { label: () => (this.sound.enabled ? 'Sound: On' : 'Sound: Off'), title: 'Turn sound on or off (M)', run: () => this.toggleSound() },
+      {
+        label: () => (this.session && !this.session.guest ? this.session.profile.username! : 'Account'),
+        title: 'Create an account to keep your captain, log in, or log out',
+        run: () => this.toggleAccount(),
+      },
     ]);
     this.labels = createLabels(this.overlay, this.world, (id) => this.selectIsland(id));
     this.aground = createNotice(this.overlay, 'notice-aground');
@@ -219,7 +226,24 @@ export class App {
     this.keyboard.on('KeyL', () => {
       if (this.mode === 'sail') void (this.side.visible ? this.side.close() : this.openLog('reports'));
     });
+    this.account = new AccountPanel(this.overlay, {
+      register: async (username, password) => {
+        await this.session!.register(username, password);
+        this.account.close();
+        this.toasts.show(`Welcome aboard, ${username}. Your captain is saved to your account.`, 'good', 4);
+      },
+      login: async (username, password) => {
+        await this.session!.login(username, password);
+        window.location.reload();
+      },
+      logout: () => {
+        this.session?.logout();
+        window.location.reload();
+      },
+      close: () => this.account.close(),
+    });
     this.keyboard.on('Escape', () => {
+      this.account.close();
       this.side.close();
       this.toggleBase(false);
       this.selected = null;
@@ -282,6 +306,19 @@ export class App {
     });
     this.loop.start();
     if (options.scenario) this.startScenario(options.scenario);
+  }
+
+  /** Opens or closes the Account panel. Only while sailing, so it never covers a battle. */
+  private toggleAccount(): void {
+    if (this.account.visible) {
+      this.account.close();
+      return;
+    }
+    const session = this.session;
+    if (!session || this.mode !== 'sail') return;
+    this.side.close();
+    this.toggleBase(false);
+    this.account.show({ name: session.profile.name, username: session.profile.username, online: session.online });
   }
 
   /** Leaves the title screen and hands control to the player. */
@@ -1025,6 +1062,7 @@ export class App {
         if (!s) return null;
         return {
           name: s.profile.name,
+          username: s.profile.username ?? null,
           online: s.online,
           resources: { ...s.profile.resources },
           captured: [...s.profile.captured],

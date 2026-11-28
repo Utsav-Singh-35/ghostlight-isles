@@ -13,7 +13,7 @@ Paste each section into the matching Devpost field. Replace the **[fill in]** it
 - Code: https://github.com/Utsav-Singh-35/ghostlight-isles
 - Video: **[fill in: YouTube URL]**
 
-**Built with:** typescript, three.js, vite, web-audio-api, netlify, netlify-functions, netlify-blobs, vitest, fast-check, playwright, kiro
+**Built with:** typescript, three.js, vite, web-audio-api, netlify, netlify-functions, mongodb, vitest, fast-check, playwright, kiro
 
 ---
 
@@ -48,8 +48,8 @@ A **Captain's orders** card walks new players through all of it, ticking each st
 
 - **TypeScript, Three.js and Vite**, with no game engine. Every model, texture and sound is made in code, so the whole game is about 200 KB gzipped and needs no asset downloads.
 - **A deterministic simulation:** pure functions at 30 ticks per second with seeded randomness, so a battle is fully decided by its seed, the defender's layout and the attacker's inputs. The renderer and the sound only read it.
-- **One server in three places:** the game's server rules use only web standards, so the same code runs as a Netlify Function with Netlify Blobs, inside Vite's dev server, and in the browser when offline.
-- **Kiro, spec first:** 11 specs written before their code, 70 numbered correctness properties, each one a fast-check property test, hooks that run tests on every rules change and block bad commits, and steering that holds the architecture rules, the performance budget and the game's numbers. More in the "How I used Kiro" section.
+- **One server in three places:** the game's server rules use only web standards, so the same code runs as a Netlify Function with MongoDB, inside Vite's dev server, and in the browser when offline.
+- **Kiro, spec first:** 12 specs written before their code, 77 numbered correctness properties, each one a fast-check property test, hooks that run tests on every rules change and block bad commits, and steering that holds the architecture rules, the performance budget and the game's numbers. More in the "How I used Kiro" section.
 
 ## Challenges I ran into
 

@@ -7,7 +7,7 @@ flowchart LR
   S --> B{net/backend.ts}
   B -->|online| F[Netlify Function api.mts] --> H[server/api.ts handle]
   B -->|offline| H2[server/api.ts handle in the browser]
-  H --> NB[(Netlify Blobs)]
+  H --> NB[(MongoDB Atlas)]
   H2 --> LS[(localStorage)]
   H --> E[sim/economy.ts]
   H2 --> E
