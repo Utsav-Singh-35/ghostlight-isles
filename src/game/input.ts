@@ -8,7 +8,7 @@ const PORT = ['KeyA', 'ArrowLeft'];
 const STARBOARD = ['KeyD', 'ArrowRight'];
 const SAILING_KEYS = new Set([...RAISE, ...LOWER, ...PORT, ...STARBOARD]);
 /** Keys the game uses, so the browser doesn't scroll or switch focus on them. */
-const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'KeyG', 'KeyT', 'KeyL', 'Space', 'Tab']);
+const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'KeyG', 'KeyT', 'KeyL', 'KeyC', 'Space', 'Tab']);
 
 /** Keyboard state for sailing and battles, plus one-shot key handlers for menus. */
 export class Keyboard {

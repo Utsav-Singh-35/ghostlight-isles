@@ -21,10 +21,13 @@ fileMatchPattern: ["src/render/**/*.ts", "public/models/**"]
 | Lantern (living) | `#FFB347` |
 | Spectral (ghosts) | `#5CFFB0` |
 | Blood Moon | `#C8102E` |
+| Your troops | `#3D8BFF` (blue) |
+| Enemy troops | `#E8432E` (red) |
 
 All colors live in `src/render/palette.ts`.
 
 ## Rules
+- Troops wear their side's colour on their clothes (blue yours, red the enemy's, green the dead) and glow a little so they read at night. Sides never rest on colour alone: a ring under your troops, a diamond under enemies.
 - The renderer reads simulation state and never writes it. Bobbing, rolling and leaning are visual only.
 - Wave math lives in `src/render/waves.ts`. The ocean shader and the CPU (for floating ships) both use it, so ships sit on the waves you see. Exactly four waves move the surface; the eight ripples only bend light and never move anything.
 - Budget: at most 150 draw calls, 4 point lights and 1024 px textures. Use `InstancedMesh` or merged geometry for repeated props. Glow comes from emissive materials, additive glow sprites and (later) bloom, not from extra lights.

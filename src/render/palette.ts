@@ -10,6 +10,10 @@ export const PALETTE = {
   spectral: '#5CFFB0',
   bloodMoon: '#C8102E',
 
+  // Troops: your crew wears blue, the enemy's red; the dead are always spectral green.
+  teamMine: '#3D8BFF',
+  teamFoe: '#E8432E',
+
   foam: '#BFD6E2',
   star: '#E8F0FF',
 

@@ -119,6 +119,8 @@ export class App {
   private readonly basePanel: BasePanel;
   private readonly side: SidePanel;
   private readonly account: AccountPanel;
+  /** While true in battle, the camera follows the fight ashore instead of the ship. */
+  private watchFight = false;
   private readonly fleetNotice: Notice;
   private readonly locker: LockerView;
   /** How red the night is right now, easing toward the moon's state. */
@@ -257,6 +259,15 @@ export class App {
     });
     this.keyboard.on('KeyM', () => this.toggleSound());
     this.keyboard.on('KeyT', () => this.cycleLock());
+    // C: watch the fight ashore, or follow the ship again.
+    this.keyboard.on('KeyC', () => {
+      if (this.mode !== 'battle') return;
+      this.watchFight = !this.watchFight;
+      // Close in over the fight; back out to the usual battle view to follow the ship.
+      if (this.watchFight) this.renderer.rig.setView(0.62, 22);
+      else this.renderer.rig.setView(0.5, 52);
+      this.toasts.show(this.watchFight ? 'Watching the fight ashore. Press C to follow your ship.' : 'Following your ship.', 'neutral', 2);
+    });
     this.overlay.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('button')) this.sound.play('click');
     });
@@ -909,11 +920,13 @@ export class App {
       const ship = interpolateShip(runner.prev.player.ship, runner.current.player.ship, alpha);
       const events = runner.takeEvents();
       const blood = runner.current.setup.mode === 'siege' ? 1 : 0;
+      const fight = this.watchFight ? fightCentre(runner.current) : null;
       this.renderer.render({
         ship,
         time: this.time,
         dt: frameSeconds,
         mode: 'battle',
+        ...(fight ? { cameraTarget: { x: fight.x, z: fight.z, heading: 0, speed: 0 } } : {}),
         bloodMoon: blood,
         battle: { prev: runner.prev, current: runner.current, alpha, events },
       });
@@ -923,6 +936,7 @@ export class App {
       // A lock on something destroyed or sunk lets go. (A ghost that slips into the fog stays locked.)
       const lock = this.keyboard.lock;
       if (lock && !lockable(runner.current, false).some((t) => t.id === lock)) this.keyboard.lock = 0;
+    this.watchFight = false;
       const layer = this.renderer.battleLayer;
       layer?.setLock(this.keyboard.lock);
       if (layer) this.battleHud.update(runner.current, layer, this.renderer, this.keyboard.salt, this.keyboard.lock);
@@ -982,6 +996,7 @@ export class App {
     this.keyboard.sailLevel = 1;
     this.keyboard.salt = ticket.setup.mode === 'siege' && ticket.setup.loadout.salt > 0;
     this.keyboard.lock = 0;
+    this.watchFight = false;
     this.hud.setVisible(false);
     this.labels.setVisible(false);
     this.captainBar.setVisible(false);
@@ -1023,6 +1038,7 @@ export class App {
     this.keyboard.sailLevel = 0;
     this.keyboard.salt = false;
     this.keyboard.lock = 0;
+    this.watchFight = false;
     this.hud.setVisible(true);
     this.labels.setVisible(true);
     this.captainBar.setVisible(this.session !== null);
@@ -1268,4 +1284,21 @@ export function fortObjective(setup: BattleSetup): string {
   return ghosts > 0
     ? `Destroy the ghost light at the island’s heart before dawn. Its ${ghosts === 1 ? 'ghost ship hunts' : `${ghosts} ghost ships hunt`} you: R loads Salt Shot.`
     : 'Destroy the ghost light at the island’s heart before dawn. Q and E fire your broadsides.';
+}
+
+/**
+ * Where the fight ashore is: the middle of the troops the player can see fighting (theirs, or
+ * the garrison in a siege), or null when nobody is ashore.
+ */
+export function fightCentre(state: BattleState): { x: number; z: number } | null {
+  const siege = state.setup.mode === 'siege';
+  const fighters = state.troops.filter((t) => !t.dead && (siege ? t.side !== 'player' : t.side === 'player'));
+  if (fighters.length === 0) return null;
+  let x = 0;
+  let z = 0;
+  for (const t of fighters) {
+    x += t.x;
+    z += t.z;
+  }
+  return { x: x / fighters.length, z: z / fighters.length };
 }

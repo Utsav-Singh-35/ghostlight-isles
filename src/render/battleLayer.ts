@@ -13,8 +13,17 @@ import type { Shore } from './ocean';
 import { PALETTE } from './palette';
 import { createGhostShipModel, type GhostShipModel } from './shipMesh';
 import { GLOW_HEIGHT, StructureSet, createKeepMesh, type StructureView } from './structureMeshes';
-import { TroopSet, gunboatGeometry, portcullisGeometry, rowboatGeometry } from './troopMeshes';
+import { TroopSet, gunboatGeometry, portcullisGeometry, rowboatGeometry, type Team } from './troopMeshes';
+
 import { sampleWaveHeight } from './waves';
+import { GHOST_TROOPS, type Troop } from '../sim/troops';
+
+/** Whose a troop is, as the player sees it: the dead are ghosts; in a siege the garrison is yours, in an assault the attackers are. */
+export function teamOf(t: Troop, siege: boolean): Team {
+  if ((GHOST_TROOPS as readonly string[]).includes(t.type) || t.side === 'ghost') return 'ghost';
+  if (siege) return t.side === 'island' ? 'mine' : 'foe';
+  return t.side === 'player' ? 'mine' : 'foe';
+}
 
 /** Boulders along the shore, and graves and dead trees on haunted islands, clear of towers and of the fort (`walls`, if any). Visual only. */
 function scatterProps(state: BattleState, heightAt: (x: number, z: number) => number, material: THREE.Material, walls: FortStyle | null): THREE.InstancedMesh[] {
@@ -107,6 +116,7 @@ export class BattleLayer {
   /** Troops, the fort's portcullis, the landing boat and the support gunboats. */
   private readonly troops = new TroopSet(TROOPS.maxTroops);
   private heightAt: (x: number, z: number) => number = () => 0.5;
+  private clock = 0;
   private gateMesh: THREE.Mesh | null = null;
   private readonly rowboatGeometry = rowboatGeometry();
   private readonly rowboat = new THREE.Mesh(this.rowboatGeometry, this.propMaterial);
@@ -237,7 +247,7 @@ export class BattleLayer {
     return out.set(s.x, this.groundOf(id) + GLOW_HEIGHT[s.type] + 2.4, s.z);
   }
 
-  update(prev: BattleState, current: BattleState, alpha: number, time: number, dt: number, scale: number, events: readonly BattleEvent[]): void {
+  update(prev: BattleState, current: BattleState, alpha: number, time: number, dt: number, scale: number, events: readonly BattleEvent[], camera?: THREE.Camera): void {
     // Defenses.
     const views: StructureView[] = [];
     for (const s of current.structures) {
@@ -264,7 +274,8 @@ export class BattleLayer {
     }
 
     // Troops ashore, and the gate until it falls.
-    this.troops.update(prev.troops, current.troops, alpha, current.tick, time, this.heightAt);
+    const siege = current.setup.mode === 'siege';
+    this.troops.update(prev.troops, current.troops.map((troop) => ({ troop, team: teamOf(troop, siege) })), alpha, current.tick, time, this.heightAt, camera);
     if (this.gateMesh) this.gateMesh.visible = !current.gate?.destroyed;
 
     // The landing boat rows in from the ship's side of the island and stays beached.
@@ -408,6 +419,7 @@ export class BattleLayer {
       }
     }
 
+    this.clock = time;
     for (const e of events) this.effect(current, e);
     this.bursts.update(dt, scale);
   }
@@ -472,7 +484,11 @@ export class BattleLayer {
       case 'strike': {
         const ghost = e.troop === 'rattler' || e.troop === 'grabber' || e.troop === 'wraithArcher' || e.troop === 'bosun';
         const y = this.heightAt(e.toX, e.toZ) + 1.4;
-        if (e.ranged) b.spawn(ghost ? 'spirit' : 'sparks', e.toX, y, e.toZ, 0.35, 0.3);
+        if (e.ranged) {
+          const shooter = state.troops.find((t) => t.id === e.id);
+          this.troops.shoot(e.x, e.z, e.toX, e.toZ, shooter ? teamOf(shooter, state.setup.mode === 'siege') : ghost ? 'ghost' : 'mine', this.clock, this.heightAt);
+          b.spawn(ghost ? 'spirit' : 'sparks', e.toX, y, e.toZ, 0.35, 0.3);
+        }
         else b.spawn(ghost ? 'spirit' : 'sparks', (e.x + e.toX) / 2, y, (e.z + e.toZ) / 2, 0.25, 0.2);
         break;
       }

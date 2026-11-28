@@ -305,7 +305,7 @@ export class GameRenderer {
     if (this.battle && frame.battle) {
       const b = this.battle;
       const { prev, current, alpha, events } = frame.battle;
-      b.update(prev, current, alpha, time, dt, this.scale, events);
+      b.update(prev, current, alpha, time, dt, this.scale, events, this.rig.camera);
       const keepStanding = !current.structures.find((s) => s.type === 'keep')?.destroyed;
       if (b.living) {
         this.lighthouseLight.position.copy(b.keepLantern).setY(b.keepLantern.y - 1.5);

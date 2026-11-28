@@ -250,11 +250,11 @@ export function partyLine(state: BattleState): string {
   if (state.setup.mode !== 'assault') {
     const garrison = state.troops.filter((t) => t.side === 'island' && !t.dead).length;
     const boarders = state.troops.filter((t) => t.side === 'ghost' && !t.dead).length;
-    return garrison + boarders > 0 ? `Ashore: ${garrison} of your crew against ${boarders} ghost boarders.${repairs}` : repairs.trim();
+    return garrison + boarders > 0 ? `Ashore: ${garrison} of your crew against ${boarders} ghost boarders. C: watch the fight.${repairs}` : repairs.trim();
   }
   const enemies = state.troops.filter((t) => t.side === 'island' && !t.dead).length;
   const gate = state.gate ? (state.gate.destroyed ? ' The gate is open.' : ` Gate ${Math.ceil(state.gate.hp)} / ${state.gate.maxHp}.`) : '';
-  if (state.landing?.done) return `Ashore: ${ashore}${fallen ? `, ${fallen} fallen` : ''}. ${enemies} defenders left.${gate}${repairs}`;
+  if (state.landing?.done) return `Ashore: ${ashore}${fallen ? `, ${fallen} fallen` : ''}. ${enemies} defenders left.${gate} C: watch the fight.${repairs}`;
   if (state.landing) return `Your party is rowing ashore.${repairs}`;
   if (aboard === 0) return repairs.trim();
   if (canLand(state)) return `L: land your party of ${aboard}.${gate}${repairs}`;
