@@ -6,7 +6,7 @@ fileMatchPattern: ["src/render/**/*.ts", "public/models/**"]
 
 ## Look
 - Low-poly with flat shading, in the style of Kenney's 3D kits, for islands, forts and ships.
-- The sea is the exception: it is lit smoothly from the waves' own slopes, with light-only ripples, a reflected sky, a moon road, foam on high crests and surf that follows each island's coastline (`src/render/ocean.ts`). Low draws half the ripples and plainer foam.
+- The sea is the exception: it is lit smoothly from the waves' own slopes, with light-only ripples, a reflected sky, a moon road, foam on high crests and surf that follows each island's coastline (`src/render/ocean.ts`). Low draws half the ripples and plainer foam. A living lighthouse sweeps two faint beams round once every 12 s; the sea shader lights the wedge they cross, so the beam needs no extra point light.
 - Haunted forts are built from their seed (`src/render/fortMeshes.ts`): a style (palisade, ruin, curtain wall or star fort), a stone and a keep by level (ghost spire, broken lighthouse, skull tower). Their towers and treasure show from the open sea, so a captain can size a fort up before attacking. Walls must read at night: pale stone, a light coping on top and torches along the outside. Beach clutter (wrecks, bonfires, shacks, bones) stays on the beach, outside the ring of tower slots, and goes into the same merged mesh, so it costs no draw calls.
 - Night by default. The moon gives cold blue light, and lanterns give warm pools of light.
 - Ghosts are see-through, glow spectral green and trail wisps. Living ships and towers are solid and lit warm.

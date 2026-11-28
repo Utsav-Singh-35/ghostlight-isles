@@ -14,6 +14,7 @@ import { createSky, type Sky } from './sky';
 import { StructureSet, fortDefenseViews, type StructureView } from './structureMeshes';
 import { IslandGarrisons } from './garrisons';
 import { TroopSet } from './troopMeshes';
+import { beamGeometry } from './fortMeshes';
 import type { TroopCounts } from '../sim/troops';
 import { sampleWaveHeight } from './waves';
 
@@ -59,6 +60,8 @@ export interface ScreenPoint {
 // Low over the sea (about 13°), so it sits inside the chase camera's view.
 const MOON_DIRECTION = new THREE.Vector3(-0.35, 0.25, 1.0).normalize();
 const FOG_DENSITY = 0.0032;
+/** Seconds for the lighthouse's beams to turn once, like a real light's character. */
+const BEAM_PERIOD = 12;
 const BLOOD_FOG_DENSITY = 0.0046;
 
 /** Builds the 3D scene once and draws one frame at a time. Reads simulation state, never writes it. */
@@ -99,6 +102,10 @@ export class GameRenderer {
   private readonly tmp = new THREE.Vector3();
   private readonly projected = new THREE.Vector3();
   private readonly shores: Shore[] = [];
+  /** The lighthouse's two sweeping beams, turning once every BEAM_PERIOD seconds. */
+  private readonly beam = new THREE.Group();
+  private readonly beamGeo = beamGeometry(150, 11);
+  private readonly beamMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.lantern).multiplyScalar(0.035), vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
   /** Every character in a row, for the lineup scene; null otherwise. */
   private lineup: { set: TroopSet; x: number; z: number; heading: number } | null = null;
   private readonly lanternColor = new THREE.Color(PALETTE.lantern);
@@ -189,6 +196,13 @@ export class GameRenderer {
     this.lighthouseLight.position.copy(this.lighthousePosition);
     this.spectralAnchors = this.islands.lights.filter((anchor) => anchor.kind === 'spectral');
     this.scene.add(this.shipLight, this.lighthouseLight, this.ghostLight);
+    for (const turn of [0, Math.PI]) {
+      const m = new THREE.Mesh(this.beamGeo, this.beamMat);
+      m.rotation.set(0.07, turn, 0, 'YXZ');
+      m.renderOrder = 6;
+      this.beam.add(m);
+    }
+    this.scene.add(this.beam);
 
     let lights = 0;
     this.scene.traverse((object) => {
@@ -322,8 +336,11 @@ export class GameRenderer {
       if (b.living) {
         this.lighthouseLight.position.copy(b.keepLantern).setY(b.keepLantern.y - 1.5);
         this.lighthouseLight.intensity = keepStanding ? 260 : 0;
-        this.ocean.setLight(1, b.keepLantern, 95, this.lanternColor, keepStanding ? 0.55 : 0);
+        this.ocean.setLight(1, b.keepLantern, 110, this.lanternColor, keepStanding ? 0.8 : 0);
+        if (keepStanding) this.sweep(b.keepLantern, time);
+        else this.sweep(null, time);
       } else {
+        this.sweep(null, time);
         this.lighthouseLight.intensity = 0;
         this.ocean.setLight(1, b.keepLantern, 95, this.spectralColor, keepStanding ? 0.5 : 0);
       }
@@ -338,7 +355,8 @@ export class GameRenderer {
     } else {
       this.lighthouseLight.position.copy(this.lighthousePosition);
       this.lighthouseLight.intensity = 260;
-      this.ocean.setLight(1, this.lighthouseLight.position, 95, this.lanternColor, 0.55);
+      this.ocean.setLight(1, this.lighthouseLight.position, 110, this.lanternColor, 0.8);
+      this.sweep(this.tmp.copy(this.lighthousePosition).setY(this.lighthousePosition.y + 1.5), time);
       // Reuse one green light for whichever haunted island is closest.
       let nearest: LightAnchor | null = null;
       let best = Infinity;
@@ -380,6 +398,19 @@ export class GameRenderer {
     }
 
     this.renderer.render(this.scene, this.rig.camera);
+  }
+
+  /** Turns the lighthouse's beams over the sea from lamp, or puts them out (null). */
+  private sweep(lamp: THREE.Vector3 | null, time: number): void {
+    this.beam.visible = lamp !== null;
+    if (!lamp) {
+      this.ocean.setBeam(0, 0, 0, 0, 0, this.lanternColor, 0);
+      return;
+    }
+    const angle = ((time / BEAM_PERIOD) % 1) * Math.PI * 2;
+    this.beam.position.copy(lamp);
+    this.beam.rotation.y = angle;
+    this.ocean.setBeam(lamp.x, lamp.z, lamp.y, angle, 230, this.lanternColor, 1.0);
   }
 
   private applyBloodMoon(amount: number): void {
@@ -450,6 +481,8 @@ export class GameRenderer {
     this.fortDefenses.dispose();
     this.lineup?.set.dispose();
     this.garrisons.dispose();
+    this.beamGeo.dispose();
+    this.beamMat.dispose();
     this.ship.dispose();
     this.glows.dispose();
     this.wisps.dispose();

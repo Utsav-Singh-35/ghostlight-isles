@@ -32,6 +32,8 @@ export interface Ocean {
   setShores(shores: readonly Shore[]): void;
   /** Sets the moonlight and horizon colors (for the Blood Moon). */
   setColors(moon: THREE.Color, horizon: THREE.Color, skyTop: THREE.Color): void;
+  /** A lighthouse's two opposite beams sweeping the water from (x, z) at height, pointing along ngle. A length of 0 turns them off. */
+  setBeam(x: number, z: number, height: number, angle: number, length: number, color: THREE.Color, strength: number): void;
   dispose(): void;
 }
 
@@ -82,6 +84,9 @@ uniform vec4 uLightPos[${OCEAN_LIGHTS}];
 uniform vec3 uLightColor[${OCEAN_LIGHTS}];
 uniform vec4 uShores[${OCEAN_SHORES}];
 uniform vec3 uCoasts[${OCEAN_SHORES}];
+uniform vec4 uBeam;
+uniform float uBeamHeight;
+uniform vec3 uBeamColor;
 varying vec3 vWorld;
 varying float vHeight;
 #include <fog_pars_fragment>
@@ -199,7 +204,23 @@ void main() {
     vec3 l = toLight / d;
     vec3 halfLight = normalize(l + viewDir);
     float shine = pow(max(dot(n, halfLight), 0.0), lightShine) * (lightShine + 8.0) * 0.012;
-    col += uLightColor[i] * (fall * fall * 0.32 * max(dot(n, l), 0.0) * (1.0 + foam * 2.5) + reach * reach * shine);
+    col += uLightColor[i] * (fall * fall * 0.5 * max(dot(n, l), 0.0) * (1.0 + foam * 2.5) + reach * reach * shine);
+  }
+
+  // A lighthouse's beams sweeping the water: a bright wedge on either side, glittering on the ripples.
+  if (uBeam.w > 0.0) {
+    vec2 d = vWorld.xz - uBeam.xy;
+    float dist = length(d);
+    float a = atan(d.x, d.y);
+    float off = abs(mod(a - uBeam.z + 3.14159265, 6.2831853) - 3.14159265);
+    off = min(off, 3.14159265 - off);
+    float width = 0.07 + 5.0 / max(dist, 8.0);
+    float wedge = 1.0 - smoothstep(width * 0.35, width, off);
+    float fall = smoothstep(6.0, 18.0, dist) * (1.0 - smoothstep(uBeam.w * 0.35, uBeam.w, dist));
+    vec3 toBeam = normalize(vec3(uBeam.x, uBeamHeight, uBeam.y) - vWorld);
+    vec3 halfBeam = normalize(toBeam + viewDir);
+    float sparkle = pow(max(dot(n, halfBeam), 0.0), lightShine) * (lightShine + 8.0) * 0.02;
+    col += uBeamColor * wedge * fall * (0.22 + sparkle + foam * 0.8);
   }
 
   gl_FragColor = vec4(col, 1.0);
@@ -241,8 +262,8 @@ export function createOcean(cellSize: number, moonDir: THREE.Vector3, detail: 'h
       uSkyTop: { value: new THREE.Color(PALETTE.skyTop) },
       uMoonDir: { value: moonDir.clone().normalize() },
       uMoonColor: { value: new THREE.Color(PALETTE.moonlight) },
-      uAmbientSky: { value: new THREE.Color(PALETTE.hemisphereSky).multiplyScalar(0.55) },
-      uAmbientGround: { value: new THREE.Color(PALETTE.hemisphereGround).multiplyScalar(0.55) },
+      uAmbientSky: { value: new THREE.Color(PALETTE.hemisphereSky).multiplyScalar(0.7) },
+      uAmbientGround: { value: new THREE.Color(PALETTE.hemisphereGround).multiplyScalar(0.7) },
       uMoonStrength: { value: 0.8 },
       uGlitter: { value: 0.75 },
       uMaxHeight: { value: MAX_WAVE_HEIGHT },
@@ -254,6 +275,9 @@ export function createOcean(cellSize: number, moonDir: THREE.Vector3, detail: 'h
       uLightColor: { value: lightColor },
       uShores: { value: shores },
       uCoasts: { value: coasts },
+      uBeam: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uBeamHeight: { value: 10 },
+      uBeamColor: { value: new THREE.Color(0, 0, 0) },
     },
   ]);
   // UniformsUtils.merge clones values; keep references to the live arrays.
@@ -303,6 +327,11 @@ export function createOcean(cellSize: number, moonDir: THREE.Vector3, detail: 'h
           s.set(0, 0, 0, 0);
         }
       });
+    },
+    setBeam(x, z, height, angle, length, color, strength) {
+      (uniforms.uBeam!.value as THREE.Vector4).set(x, z, angle, length);
+      uniforms.uBeamHeight!.value = height;
+      (uniforms.uBeamColor!.value as THREE.Color).copy(color).multiplyScalar(strength);
     },
     setColors(moon, horizon, skyTop) {
       (uniforms.uMoonColor!.value as THREE.Color).copy(moon);
