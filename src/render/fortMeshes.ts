@@ -9,6 +9,8 @@ import { PALETTE } from './palette';
 const IRON = '#26262A';
 const BONE = '#D8CDB2';
 const WOOD = '#3E3026';
+/** Stockade stakes: weathered pale wood, so a palisade's outline shows at night. */
+const STAKE = '#7A6650';
 const FLAG_BLACK = '#121214';
 
 /** Terrain height under a point given relative to the island's centre. */
@@ -27,14 +29,15 @@ interface Stone {
 }
 
 const STONES: readonly Stone[] = [
+  // Pale enough to read against the night sea; the tops of the walls catch the moon.
   // Grey granite.
-  { stone: '#6F6B63', light: '#857F74', dark: '#4F4C46', moss: '#46523A', roof: '#2C2F37' },
-  // Black basalt.
-  { stone: '#3E3F46', light: '#55565E', dark: '#2A2B31', moss: '#3A4636', roof: '#1E1F24' },
+  { stone: '#8C877C', light: '#B5AEA0', dark: '#5E5A53', moss: '#4E5B40', roof: '#30343D' },
+  // Black basalt, with pale mortar on top.
+  { stone: '#5C5E68', light: '#8E909A', dark: '#3A3B42', moss: '#3F4C3A', roof: '#22232A' },
   // Bone-white limestone.
-  { stone: '#9C9585', light: '#B4AC98', dark: '#6E685C', moss: '#55603F', roof: '#3A2E2A' },
+  { stone: '#B2AA98', light: '#D3CBB6', dark: '#7C7567', moss: '#5B6644', roof: '#3E302B' },
   // Green-grey stone, half eaten by moss.
-  { stone: '#5E6658', light: '#737B6A', dark: '#434A3F', moss: '#3E5A36', roof: '#263026' },
+  { stone: '#78826F', light: '#A0A894', dark: '#4F5749', moss: '#44633B', roof: '#29332A' },
 ];
 
 /** What a fort adds to a scene besides its stone: spectral fire to glow, and where its keep's light burns. */
@@ -231,6 +234,165 @@ function gibbet(b: MeshBuilder, x: number, y: number, z: number, yaw: number): v
   b.add(new THREE.BoxGeometry(0.28, 0.6, 0.16), BONE, placed([cx, y + 2.7, cz], [0, 0, 0.2]));
 }
 
+// ---- Island clutter: what is left of the people who came before -------------------------
+
+const HULL = '#3A2A1E';
+const HULL_ROT = '#2A231C';
+const CLOTH = '#6E6656';
+const GOLD = '#D9A441';
+
+/** A wrecked ship half sunk in the sand, ribs showing, its mast snapped. Its bow points along `yaw`. */
+function shipwreck(b: MeshBuilder, x: number, y: number, z: number, yaw: number, rng: Rng): void {
+  const ux = Math.sin(yaw);
+  const uz = Math.cos(yaw);
+  const px = Math.cos(yaw);
+  const pz = -Math.sin(yaw);
+  const tilt = rng.range(0.25, 0.45);
+  // The keel and the side still standing.
+  b.add(new THREE.BoxGeometry(0.5, 0.5, 9), HULL, placed([x, y - 0.1, z], [0, yaw, 0]));
+  b.add(new THREE.BoxGeometry(0.22, 1.9, 7.5), HULL, placed([x + px * 1.2, y + 0.6, z + pz * 1.2], [0, yaw, tilt]));
+  // Ribs on the broken side, curving up out of the sand.
+  for (let r = 0; r < 7; r++) {
+    const t = -3.3 + r * 1.1;
+    const h = 1.6 + Math.sin((r / 6) * Math.PI) * 1.0;
+    b.add(new THREE.BoxGeometry(0.16, h, 0.18), HULL_ROT, placed([x + ux * t - px * 1.1, y + h / 2 - 0.2, z + uz * t - pz * 1.1], [0, yaw, -0.35]));
+  }
+  // The stump of the mast, and the rest of it lying in the sand with a rag of sail.
+  b.add(new THREE.CylinderGeometry(0.16, 0.2, 2.6, 6), HULL, placed([x, y + 1.1, z], [0.1, 0, 0.15]));
+  b.add(new THREE.CylinderGeometry(0.12, 0.15, 6, 6), HULL_ROT, placed([x + px * 3.2 + ux * 1.5, y + 0.15, z + pz * 3.2 + uz * 1.5], [Math.PI / 2, yaw + 0.6, 0]));
+  b.add(new THREE.BoxGeometry(0.05, 1.4, 2.2), CLOTH, placed([x + px * 3.4 + ux * 0.4, y + 0.3, z + pz * 3.4 + uz * 0.4], [1.2, yaw + 0.6, 0]));
+}
+
+/** A bonfire of driftwood and bones. Returns where its fire burns. */
+function bonfire(b: MeshBuilder, x: number, y: number, z: number, rng: Rng): Vec3[] {
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * TAU + rng.range(-0.2, 0.2);
+    b.add(new THREE.CylinderGeometry(0.09, 0.12, 1.5, 5), HULL, placed([x + Math.sin(a) * 0.35, y + 0.45, z + Math.cos(a) * 0.35], [Math.cos(a) * 0.55, 0, -Math.sin(a) * 0.55]));
+  }
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * TAU;
+    b.add(new THREE.DodecahedronGeometry(0.22, 0), '#4A4A50', placed([x + Math.sin(a) * 0.95, y + 0.08, z + Math.cos(a) * 0.95]));
+  }
+  b.add(new THREE.SphereGeometry(0.18, 6, 5), BONE, placed([x + 0.9, y + 0.15, z + 0.4]));
+  return [
+    [x, y + 0.9, z],
+    [x + 0.2, y + 1.3, z - 0.1],
+    [x - 0.15, y + 0.6, z + 0.15],
+  ];
+}
+
+/** A fisherman's shack, abandoned: plank walls, a sagging roof, a door left open. Faces `yaw`. */
+function hut(b: MeshBuilder, x: number, y: number, z: number, yaw: number, rng: Rng): Vec3 {
+  const w = rng.range(2.4, 3.2);
+  const d = rng.range(2.2, 2.8);
+  b.add(new THREE.BoxGeometry(w, 2.0, d), '#4E3E30', placed([x, y + 0.9, z], [0, yaw, rng.range(-0.04, 0.04)]));
+  const roof = new THREE.ConeGeometry(Math.hypot(w, d) * 0.62, 1.4, 4);
+  b.add(roof, '#2E2A26', placed([x, y + 2.55, z], [0, yaw + Math.PI / 4, rng.range(-0.08, 0.08)], [1, 1, d / w]));
+  const ux = Math.sin(yaw);
+  const uz = Math.cos(yaw);
+  b.add(new THREE.BoxGeometry(0.8, 1.4, 0.06), '#0E0D0C', placed([x + ux * (d / 2 + 0.02), y + 0.7, z + uz * (d / 2 + 0.02)], [0, yaw, 0]));
+  b.add(new THREE.BoxGeometry(0.08, 1.4, 0.8), '#3A2E24', placed([x + ux * (d / 2 + 0.35) + Math.cos(yaw) * 0.6, y + 0.7, z + uz * (d / 2 + 0.35) - Math.sin(yaw) * 0.6], [0, yaw + 0.9, 0]));
+  // A candle in the window, so somebody (or something) is still home.
+  return [x + ux * (d / 2 + 0.05) + Math.cos(yaw) * (w * 0.3), y + 1.2, z + uz * (d / 2 + 0.05) - Math.sin(yaw) * (w * 0.3)];
+}
+
+/** A treasure chest, lid open, gold spilling. */
+function chest(b: MeshBuilder, x: number, y: number, z: number, yaw: number): void {
+  b.add(new THREE.BoxGeometry(1.1, 0.6, 0.7), '#5A3A22', placed([x, y + 0.3, z], [0, yaw, 0]));
+  b.add(new THREE.BoxGeometry(1.14, 0.08, 0.74), IRON, placed([x, y + 0.45, z], [0, yaw, 0]));
+  b.add(new THREE.BoxGeometry(1.1, 0.12, 0.7), '#5A3A22', placed([x - Math.sin(yaw) * 0.35, y + 0.9, z - Math.cos(yaw) * 0.35], [-1.2, yaw, 0]));
+  b.add(new THREE.SphereGeometry(0.45, 7, 4), GOLD, placed([x, y + 0.6, z], [0, 0, 0], [1, 0.35, 0.65]), 1.2);
+  b.add(new THREE.SphereGeometry(0.3, 6, 4), GOLD, placed([x + Math.sin(yaw) * 0.6, y + 0.05, z + Math.cos(yaw) * 0.6], [0, 0, 0], [1, 0.25, 1]), 1.15);
+}
+
+/** A skeleton sprawled on the sand. */
+function skeleton(b: MeshBuilder, x: number, y: number, z: number, yaw: number, rng: Rng): void {
+  const ux = Math.sin(yaw);
+  const uz = Math.cos(yaw);
+  b.add(new THREE.SphereGeometry(0.2, 6, 5), BONE, placed([x + ux * 0.75, y + 0.15, z + uz * 0.75], [0, rng.range(0, TAU), 0]));
+  for (let r = 0; r < 4; r++) b.add(new THREE.BoxGeometry(0.5 - r * 0.05, 0.05, 0.06), BONE, placed([x + ux * (0.45 - r * 0.13), y + 0.06, z + uz * (0.45 - r * 0.13)], [0, yaw + Math.PI / 2, 0]));
+  b.add(new THREE.BoxGeometry(0.06, 0.05, 0.7), BONE, placed([x + ux * 0.2, y + 0.05, z + uz * 0.2], [0, yaw, 0]));
+  for (const side of [-1, 1]) {
+    const px = Math.cos(yaw) * side * 0.15;
+    const pz = -Math.sin(yaw) * side * 0.15;
+    b.add(new THREE.BoxGeometry(0.06, 0.05, 0.8), BONE, placed([x - ux * 0.4 + px, y + 0.05, z - uz * 0.4 + pz], [0, yaw + side * 0.25, 0]));
+    b.add(new THREE.BoxGeometry(0.05, 0.05, 0.6), BONE, placed([x + ux * 0.4 + px * 3, y + 0.05, z + uz * 0.4 + pz * 3], [0, yaw + side * rng.range(0.4, 1.2), 0]));
+  }
+}
+
+/** A rowboat left upside down on the beach. */
+function rowboat(b: MeshBuilder, x: number, y: number, z: number, yaw: number): void {
+  const hull = new THREE.SphereGeometry(1, 8, 4, 0, TAU, 0, Math.PI / 2);
+  b.add(hull, '#4A3626', placed([x, y + 0.05, z], [0, yaw, 0], [0.75, 0.45, 1.9]));
+  b.add(new THREE.BoxGeometry(0.08, 0.08, 2.4), '#3A2A1E', placed([x + Math.cos(yaw) * 1.1, y + 0.05, z - Math.sin(yaw) * 1.1], [0, yaw + 0.2, 0]));
+}
+
+/** A crow, perched, as a dark wedge with a head. */
+function crow(b: MeshBuilder, x: number, y: number, z: number, yaw: number): void {
+  b.add(new THREE.ConeGeometry(0.13, 0.42, 4), '#0C0C10', placed([x, y + 0.12, z], [Math.PI / 2 - 0.5, yaw, 0]));
+  b.add(new THREE.SphereGeometry(0.08, 5, 4), '#0C0C10', placed([x + Math.sin(yaw) * 0.16, y + 0.27, z + Math.cos(yaw) * 0.16]));
+}
+
+/**
+ * Adds the island's clutter between the fort and the sea: wrecks at the waterline, a bonfire,
+ * shacks, a chest, skeletons, a rowboat and crows. More of it on harder forts. Everything sits on
+ * the beach, outside the ring of tower slots, so nothing stands in a defense or the walls.
+ */
+function addClutter(b: MeshBuilder, islandRadius: number, level: number, rng: Rng, groundAt: GroundAt, at: (x: number, y: number, z: number) => Vec3, flames: Vec3[]): void {
+  const used: number[] = [];
+  /** A free angle on the beach, at least `gap` radians from everything placed so far. */
+  const angle = (gap: number): number => {
+    for (let tries = 0; tries < 12; tries++) {
+      const a = rng.range(0, TAU);
+      if (used.every((u) => Math.abs(Math.atan2(Math.sin(a - u), Math.cos(a - u))) > gap)) {
+        used.push(a);
+        return a;
+      }
+    }
+    const a = rng.range(0, TAU);
+    used.push(a);
+    return a;
+  };
+  const spot = (a: number, f: number): [number, number, number] => {
+    const x = Math.sin(a) * islandRadius * f;
+    const z = Math.cos(a) * islandRadius * f;
+    return [x, groundAt(x, z), z];
+  };
+  const place = (a: number, f: number, fn: (x: number, y: number, z: number) => void) => {
+    const [x, y, z] = spot(a, f);
+    const [wx, , wz] = at(x, 0, z);
+    fn(wx, y, wz);
+  };
+  for (let w = 0; w < (level >= 3 ? 2 : 1); w++) {
+    const a = angle(0.7);
+    place(a, 0.9, (x, y, z) => shipwreck(b, x, y - 0.35, z, a + Math.PI / 2 + rng.range(-0.4, 0.4), rng));
+  }
+  for (let f = 0; f < 1 + Math.floor(level / 3); f++) {
+    const a = angle(0.45);
+    place(a, 0.8, (x, y, z) => flames.push(...bonfire(b, x, y, z, rng)));
+  }
+  for (let h = 0; h < Math.min(3, 1 + Math.floor(level / 2)); h++) {
+    const a = angle(0.45);
+    place(a, 0.78, (x, y, z) => flames.push(hut(b, x, y, z, a + Math.PI, rng)));
+  }
+  {
+    const a = angle(0.35);
+    place(a, 0.8, (x, y, z) => chest(b, x, y, z, a + Math.PI + rng.range(-0.5, 0.5)));
+  }
+  for (let s = 0; s < 2 + level; s++) {
+    const a = angle(0.15);
+    place(a, rng.range(0.76, 0.86), (x, y, z) => skeleton(b, x, y + 0.02, z, rng.range(0, TAU), rng));
+  }
+  {
+    const a = angle(0.35);
+    place(a, 0.88, (x, y, z) => rowboat(b, x, y, z, a + Math.PI / 2));
+  }
+  for (let c = 0; c < 3 + level; c++) {
+    const a = angle(0.08);
+    place(a, rng.range(0.74, 0.84), (x, y, z) => crow(b, x, y, z, rng.range(0, TAU)));
+  }
+}
+
 /**
  * Adds a haunted fort to `b`, in a style and stone chosen from its seed: walls, turrets, a gate,
  * flags, skull pikes, gibbets and braziers. Higher levels get more sides, taller walls and more
@@ -278,8 +440,8 @@ export function addFort(b: MeshBuilder, islandRadius: number, level: number, see
         const h = wallH + 0.6 + rng.range(-0.4, 0.5);
         const x = mx + ux * t;
         const z = mz + uz * t;
-        b.add(new THREE.CylinderGeometry(0.22, 0.26, h, 5), WOOD, placed(at(x, base + h / 2, z), [rng.range(-0.05, 0.05), rng.next() * TAU, rng.range(-0.05, 0.05)]), rng.range(0.8, 1.1));
-        b.add(new THREE.ConeGeometry(0.24, 0.55, 5), WOOD, placed(at(x, base + h + 0.27, z)), 0.9);
+        b.add(new THREE.CylinderGeometry(0.22, 0.26, h, 5), STAKE, placed(at(x, base + h / 2, z), [rng.range(-0.05, 0.05), rng.next() * TAU, rng.range(-0.05, 0.05)]), rng.range(0.8, 1.1));
+        b.add(new THREE.ConeGeometry(0.24, 0.55, 5), STAKE, placed(at(x, base + h + 0.27, z)), 1.15);
         if (rng.next() < 0.12) b.add(new THREE.SphereGeometry(0.24, 6, 5), BONE, placed(at(x, base + h + 0.55, z), [0, rng.range(0, TAU), 0], [1, 1.1, 1.15]));
       }
       return;
@@ -311,6 +473,20 @@ export function addFort(b: MeshBuilder, islandRadius: number, level: number, see
       }
       b.add(new THREE.BoxGeometry(thick, top - base, length), stone.stone, placed(at(cx, (base + top) / 2, cz), [0, yaw, 0]), rng.range(0.9, 1.05));
       b.add(new THREE.BoxGeometry(thick * 1.12, 0.7, length * 1.01), stone.moss, placed(at(cx, low + 0.1, cz), [0, yaw, 0]), rng.range(0.8, 1));
+      // A pale coping stone along the top, so the line of the wall reads from far away at night.
+      b.add(new THREE.BoxGeometry(thick * 1.1, 0.16, length * 1.0), stone.light, placed(at(cx, top + 0.02, cz), [0, yaw, 0]), 1.25);
+      // Torches on iron brackets along the outside of the wall.
+      const torches = Math.floor(length / 5.5);
+      for (let q = 0; q < torches; q++) {
+        const t = from + ((q + 0.5) / torches) * length;
+        const out = thick / 2 + 0.18;
+        const x = mx + ux * t + nx * out;
+        const z = mz + uz * t + nz * out;
+        const y = top - 1.0;
+        b.add(new THREE.BoxGeometry(0.08, 0.08, 0.42), IRON, placed(at(x - nx * 0.1, y - 0.25, z - nz * 0.1), [0, yaw + Math.PI / 2, 0]));
+        b.add(new THREE.CylinderGeometry(0.09, 0.05, 0.4, 5), WOOD, placed(at(x, y - 0.05, z)));
+        flames.push(at(x, y + 0.3, z));
+      }
       const count = Math.max(1, Math.floor(length / 1.3));
       for (let m = 0; m < count; m++) {
         if (rng.next() < 0.2) continue;
@@ -345,6 +521,8 @@ export function addFort(b: MeshBuilder, islandRadius: number, level: number, see
         b.add(new THREE.BoxGeometry(0.12, barHeight, 0.12), IRON, placed(at(mx + ux * t, base + barHeight / 2, mz + uz * t), [0, yaw, 0]));
       }
       b.add(new THREE.BoxGeometry(0.1, 0.12, gap), IRON, placed(at(mx, low + 1.6, mz), [0, yaw, 0]));
+      // Ghost light burns in the gateway, behind the bars.
+      for (let i = 0; i < 3; i++) flames.push(at(mx + ux * (i - 1) * gap * 0.3 - nx * 0.4, low + 0.6 + i * 0.5, mz + uz * (i - 1) * gap * 0.3 - nz * 0.4));
       // Skulls on pikes either side of the gate, and a torch on each side.
       for (const side of [-1, 1]) {
         const t = side * (gap / 2 + 1.3);
@@ -405,6 +583,8 @@ export function addFort(b: MeshBuilder, islandRadius: number, level: number, see
     const z = Math.cos(a) * d;
     gibbet(b, origin.x + x, groundAt(x, z) - 0.1, origin.z + z, a);
   }
+  // Wrecks, fires, shacks and bones on the beach. Its own random stream, so the walls above never change.
+  addClutter(b, islandRadius, level, createRng(seed ^ 0xc1a7), groundAt, at, flames);
   // Candles and bones at the keep's feet.
   const keepR = keepBaseRadius(level) * keepScale(FORTS.keepLevel[Math.min(FORTS.levels, Math.max(1, level)) - 1]!);
   for (let c = 0; c < 3 + level; c++) {
