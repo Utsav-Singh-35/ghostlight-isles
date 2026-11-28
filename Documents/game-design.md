@@ -73,7 +73,7 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 | Bone Catapult | 450 gold | 900 gold | 1,700 gold | 2 |
 | Jack-o'-lantern Mine | 100 gold | 220 gold | 450 gold | 1 |
 
-Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 / 1,800 gold (+60 ecto) for 210 / 270 health; Cannons 600 / 1,500 gold; Salt Shot 300 + 30 ecto / 900 + 80 ecto; Witchfire Barrel unlock 400, then 800 / 1,600 gold; Bat Swarm unlock 60 ecto, then 120 / 240 ecto; Pumpkin Mortar 500 gold + 20 ecto, then 1,000 + 40 / 2,000 + 80. A new captain starts with 600 gold, 30 ectoplasm, one Cannon Tower, cannons and Salt Shot at level 1.
+Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 / 1,800 gold (+60 ecto) for 210 / 270 health; Cannons 600 / 1,500 gold; Salt Shot 300 + 30 ecto / 900 + 80 ecto; Witchfire Barrel unlock 400, then 800 / 1,600 gold; Bat Swarm unlock 60 ecto, then 120 / 240 ecto; Pumpkin Mortar 500 gold + 20 ecto, then 1,000 + 40 / 2,000 + 80. A new captain starts with 600 gold, 30 ectoplasm, one Cannon Tower, cannons and Salt Shot at level 1, and a **trial**: for their first **3 battles** every ship weapon (Witchfire, Bat Swarm, Pumpkin Mortar too) sails at level 1 or their own level, whichever is higher.
 
 ## Crew (code)
 - You start with two: a **Gunner** (reloads 20% faster) and a **Navigator** (your lantern shows ghosts **30 m** off in the fog instead of 20 m).
@@ -104,12 +104,14 @@ Haunted islands are taken by battle only: destroy every tower and the keep (the 
 The Lantern Lines puzzle is now only the escape from Davy Jones' Locker: rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. The server picks a new seed for every escape, and every generated puzzle has a solution.
 
 ## Raids (asynchronous multiplayer)
+- **Toughness:** every raid target shows 1 to 5 red stars from its rating (each defense counts its level, the home level counts double): up to 6 is 1 star, 14 is 2, 24 is 3, 38 is 4, more is 5. Haunted forts show one star per fort level.
+- **Finding captains:** search the raid list by username. When someone raids you, your log names them with a **Raid back** button; raiders get no protection, so revenge is always open.
 - You attack a saved copy of another player's island. Its defenses fight on their own.
 - The client sends the seed and your inputs. The server replays the battle and rejects any result that doesn't match.
 - After being raided, an island gets **4 hours** of protection. The owner reads a raid report later.
 
 ## The ghost fleet and the Blood Moon (code)
-- Every **20 minutes** (counted from the Unix epoch) the moon turns red for **3 minutes**, for every player at once. The sky, sea and fog turn red and the fog thickens.
+- Every **8 minutes** (counted from the Unix epoch) the moon turns red for **3 minutes**, for every player at once. The sky, sea and fog turn red and the fog thickens.
 - When the Blood Moon rises, the fleet sails for **your** Last Light: a warning and a **20 s** countdown, then the siege (or press "Defend now"). After a siege the island **rests for 10 minutes**, so each Blood Moon brings one siege.
 - Fleet size: **2** ships, **+1 per 150 cursed gold** you hold, **+1 per home level above 1**, up to 8. Fleet level: your home level, **+1 per 3 sieges repelled**, up to 5.
 - Each ghost ship sunk pays **40 cursed gold and 8 ectoplasm** and 5 infamy. If the ghosts destroy part of the island they take up to 30% of storage by destruction, cursed gold first.

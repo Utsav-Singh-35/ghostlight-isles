@@ -224,6 +224,8 @@ export const ECONOMY = {
   maxReports: 20,
   /** Hull health by hull level − 1. */
   hull: [160, 210, 270],
+  /** A new captain carries every ship weapon at level 1 for this many battles. */
+  trialBattles: 3,
   nameMinLength: 2,
   nameMaxLength: 20,
 } as const;
@@ -336,7 +338,7 @@ export const ACCOUNTS = {
 
 export const BLOOD_MOON = {
   /** A Blood Moon rises every period and stays red for its duration, for every player at once. */
-  periodSeconds: 1200,
+  periodSeconds: 480,
   durationSeconds: 180,
   /** A player may summon their own Blood Moon this often. */
   summonCooldownSeconds: 120,

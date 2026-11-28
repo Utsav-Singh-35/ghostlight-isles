@@ -136,7 +136,9 @@ export class BasePanel {
       body.append(el('h3', 'bp-section', 'Mines in the water'));
       for (let slot = 0; slot < slots.mines; slot++) body.append(this.slotRow(profile, slot, true));
     } else {
-      for (const part of SHIP_PARTS) body.append(this.partRow(profile, part));
+      const trial = profile.trialBattles ?? 0;
+    if (trial > 0) body.append(el('p', 'bp-note', `Your trial: every weapon sails with you at level 1 for ${trial} more ${trial === 1 ? 'battle' : 'battles'}. Refit a weapon here to keep it after that.`));
+    for (const part of SHIP_PARTS) body.append(this.partRow(profile, part));
       body.append(el('h3', 'bp-section', 'Crew'));
       for (const role of CREW_ROLES) body.append(this.crewRow(profile, role));
     }

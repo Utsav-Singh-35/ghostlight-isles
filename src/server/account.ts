@@ -1,7 +1,7 @@
 import { ACCOUNTS, ECONOMY } from '../sim/balance';
 import { collectTribute, completeCleanse, createProfile, publicProfile, type Profile } from '../sim/profile';
 import { hashPassword, signToken, verifyPassword } from './credentials';
-import { loadProfile, saveProfile, tokenVersionOf } from './players';
+import { loadProfile, saveProfile, tokenVersionOf, usernameKey } from './players';
 import { HttpError, randomHex, route, stringField, type ServerContext } from './router';
 
 const FIRST = ['Ashen', 'Salt-Eye', 'Grim', 'Lantern', 'Hollow', 'Bonny', 'Black', 'Pale', 'Storm', 'Rook', 'Cinder', 'Fog', 'Moth', 'Wren'];
@@ -34,7 +34,6 @@ export function isValidPassword(password: string): boolean {
   return password.length >= ACCOUNTS.passwordMinLength && password.length <= ACCOUNTS.passwordMaxLength && !LONE_SURROGATE.test(password);
 }
 
-const usernameKey = (username: string) => `user:${username.toLowerCase()}`;
 
 const USERNAME_RULE = `Usernames use ${ACCOUNTS.usernameMinLength} to ${ACCOUNTS.usernameMaxLength} letters, numbers or underscores, and start with a letter.`;
 const PASSWORD_RULE = `Passwords need ${ACCOUNTS.passwordMinLength} to ${ACCOUNTS.passwordMaxLength} characters.`;

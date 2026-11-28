@@ -1,10 +1,11 @@
 import { CREW } from '../sim/balance';
 import type { BattleResult } from '../sim/battle';
-import type { CrewSlot, Profile } from '../sim/profile';
+import { useTrialBattle, type CrewSlot, type Profile } from '../sim/profile';
 
 /**
  * What every battle leaves behind: ghost crew members use up a battle, and when the ship sinks
  * one living crew member dies and comes back as a ghost, and the ship goes to Davy Jones' Locker.
+ * A new captain's trial of every weapon loses one battle.
  */
 export function afterBattle(profile: Profile, result: BattleResult | null, seed: number): Profile {
   if (!result) return profile;
@@ -23,5 +24,5 @@ export function afterBattle(profile: Profile, result: BattleResult | null, seed:
     }
     stats = { ...stats, timesSunk: stats.timesSunk + 1 };
   }
-  return { ...profile, crew, stats, sunk: profile.sunk || result.shipSunk };
+  return { ...useTrialBattle(profile), crew, stats, sunk: profile.sunk || result.shipSunk };
 }

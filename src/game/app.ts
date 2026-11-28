@@ -16,7 +16,8 @@ import { DEFENSE_NAMES, SHIP_PART_NAMES, slotsFor } from '../sim/base';
 import { fortDifficulty, fortLayout, fortSetup, mineSlotPosition, slotPosition } from '../sim/layout';
 import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
-import { SidePanel, ago } from '../ui/sidePanel';
+import { SidePanel, ago, duration } from '../ui/sidePanel';
+import { fortToughness, starText } from '../sim/toughness';
 import { LockerView } from '../ui/lockerView';
 import { CREW_NAMES } from '../sim/crew';
 import type { Resources } from '../sim/economy';
@@ -514,23 +515,59 @@ export class App {
     if (!session || this.mode !== 'sail' || this.puzzle.visible || this.results.visible || this.locker.visible) return;
     this.toggleBase(false);
     await this.guarded(async () => {
-      const { targets } = await session.request<{ targets: RaidTarget[] }>('GET', '/raids/targets');
-      const rows = targets.map((t) => {
-        const row = el('div', 'sp-row');
-        const who = t.kind === 'rival' ? `Captain ${t.name}` : `Captain ${t.name} (a real player)`;
-        row.append(
-          el('div', 'sp-row-title', who),
-          el('p', 'sp-row-detail', `Island level ${t.homeLevel}, ${t.defenses} ${t.defenses === 1 ? 'defense' : 'defenses'}, ${t.infamy} infamy. Could lose up to ${t.loot.gold} gold and ${t.loot.ectoplasm} ectoplasm.`),
-        );
-        const raid = el('button', 'bp-action', `Raid ${t.name}`);
-        raid.type = 'button';
-        raid.addEventListener('click', () => void this.startRaid(t.id));
-        row.append(raid);
-        return row;
-      });
+      const { targets, now } = await session.request<{ targets: RaidTarget[]; now: number }>('GET', '/raids/targets');
+      const rows = targets.map((t) => this.raidRow(t, now));
       const intro = el('p', 'sp-note', 'You fight a copy of their island; they can be away. Half the island earns a star, its lighthouse a second, everything a third. You take up to 30% of their storage.');
-      this.side.show('Raid an island', [intro, ...rows]);
+      this.side.show('Raid an island', [this.raidSearch(), intro, ...rows]);
     });
+  }
+
+  /** One island in the raid list: who, how tough, what it could lose, and a Raid button. */
+  private raidRow(t: RaidTarget, now: number): HTMLElement {
+    const row = el('div', 'sp-row');
+    const who = t.kind === 'rival' ? `Captain ${t.name}` : `Captain ${t.name} (a real player)`;
+    const title = el('div', 'sp-row-title', who);
+    const stars = el('span', 'toughness', ` ${starText(t.toughness)}`);
+    stars.title = `Toughness ${t.toughness} of 5`;
+    stars.setAttribute('aria-label', `Toughness ${t.toughness} of 5`);
+    title.append(stars);
+    row.append(
+      title,
+      el('p', 'sp-row-detail', `Island level ${t.homeLevel}, ${t.defenses} ${t.defenses === 1 ? 'defense' : 'defenses'}, ${t.infamy} infamy. Could lose up to ${t.loot.gold} gold and ${t.loot.ectoplasm} ectoplasm.`),
+    );
+    const shielded = (t.protectedUntil ?? 0) > now;
+    const raid = el('button', 'bp-action', shielded ? `Protected for ${duration((t.protectedUntil ?? 0) - now)}` : `Raid ${t.name}`);
+    raid.type = 'button';
+    raid.disabled = shielded;
+    raid.addEventListener('click', () => void this.startRaid(t.id));
+    row.append(raid);
+    return row;
+  }
+
+  /** Find a captain by username, to raid them. */
+  private raidSearch(): HTMLElement {
+    const form = el('form', 'sp-search');
+    const input = el('input', 'ac-input');
+    input.type = 'search';
+    input.placeholder = 'Find a captain by username';
+    input.setAttribute('aria-label', 'Find a captain by username');
+    input.maxLength = 16;
+    input.spellcheck = false;
+    const go = el('button', 'ghost-button', 'Find');
+    go.type = 'submit';
+    const found = el('div', 'sp-found');
+    form.append(input, go, found);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const session = this.session;
+      const name = input.value.trim();
+      if (!session || !name) return;
+      session
+        .request<{ target: RaidTarget; now: number }>('GET', `/raids/find/${encodeURIComponent(name)}`)
+        .then(({ target, now }) => found.replaceChildren(this.raidRow(target, now)))
+        .catch((e: unknown) => found.replaceChildren(el('p', 'ac-error', e instanceof Error ? e.message : 'Nobody answered.')));
+    });
+    return form;
   }
 
   private async startRaid(targetId: string): Promise<void> {
@@ -579,6 +616,12 @@ export class App {
         ? reports.map((r) => {
             const row = el('div', `sp-row sp-row-${r.tone}`);
             row.append(el('div', 'sp-row-title', r.title), el('p', 'sp-row-detail', `${r.detail} (${ago(now - r.at)})`));
+            if (r.from) {
+              const back = el('button', 'bp-action', `Raid ${r.from.name} back`);
+              back.type = 'button';
+              back.addEventListener('click', () => void this.startRaid(r.from!.id));
+              row.append(back);
+            }
             return row;
           })
         : [el('p', 'sp-note', 'Nothing yet. Capture an island, raid a rival or survive a Blood Moon, and it will be written here.')];
@@ -1089,6 +1132,9 @@ export interface RaidTarget {
   readonly defenses: number;
   readonly infamy: number;
   readonly loot: { readonly gold: number; readonly ectoplasm: number };
+  /** 1 to 5 stars. */
+  readonly toughness: number;
+  readonly protectedUntil?: number;
 }
 
 export interface RaidOutcome {
@@ -1181,7 +1227,7 @@ export function fortReport(island: Island): string[] {
   const vaults = FORTS.vaults[i]!;
   const powder = FORTS.powderStores[i]!;
   const base = REWARDS.captureGold[i]!;
-  const lines = [`Defended by ${listInWords(towers)}${mines > 0 ? ` and ${mines} ${mines === 1 ? 'mine' : 'mines'}` : ''}.`];
+  const lines = [`Toughness ${starText(fortToughness(level))} (${fortToughness(level)} of 5).`, `Defended by ${listInWords(towers)}${mines > 0 ? ` and ${mines} ${mines === 1 ? 'mine' : 'mines'}` : ''}.`];
   if (ghosts > 0) lines.push(`${ghosts} ghost ${ghosts === 1 ? 'ship rises' : 'ships rise'} from the island to hunt you.`);
   lines.push(
     `Treasure: ${vaults} ${vaults === 1 ? 'vault' : 'vaults'} worth ${FORTS.vaultGold[i]} gold each${powder > 0 ? `. Powder: ${powder} ${powder === 1 ? 'store that blows' : 'stores that blow'} up the towers beside ${powder === 1 ? 'it' : 'them'}` : ''}.`,

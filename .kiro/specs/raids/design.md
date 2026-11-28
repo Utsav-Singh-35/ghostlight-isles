@@ -24,4 +24,8 @@ Every raided island uses Last Light's shape (radius `WORLD.homeIslandRadius`), w
 **Validates: Requirements 3.1, 3.2**
 
 **Property 4: Infamy follows stars.** *For any* finished raid, the raider's infamy rises by exactly `REWARDS.infamyPerStar` × the replay's stars.
+
+**Property 5: Toughness grows with defenses.** *For any* base, its toughness is a whole number from 1 to 5, and adding a defense, upgrading one or raising the home level never lowers it. Validates Requirement 5.3.
+
+**Property 6: Revenge finds the raider.** *For any* raid on a player that destroys anything or not, the defender's new report names the raider's id, and starting a raid on that id faces the raider's own base. Validates Requirements 5.1, 5.2.
 **Validates: Requirement 2.4**

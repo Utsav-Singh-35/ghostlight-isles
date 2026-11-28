@@ -41,3 +41,12 @@ Asynchronous raids. A captain attacks a saved copy of another captain's island, 
 #### Acceptance Criteria
 1. THE Handler SHALL return the 10 most infamous captains, real and rival, with the caller's own rank.
 2. THE Game SHALL show the leaderboard and the captain's reports in the Captain's Log (L).
+
+### Requirement 5: Finding rivals and paying them back
+**User Story:** As a captain, I want to raid a player by username, strike back at whoever raided me, and see how tough an island is first, so that raids feel personal and fair.
+
+#### Acceptance Criteria
+1. WHEN a captain searches for a registered username (in any letter case), THE Handler SHALL answer that captain as a raid target, or 404 if there is none; a captain can't find themselves.
+2. WHEN another captain raids a player's island, THE Report in the defender's log SHALL name the raider and let the defender raid them back with one button, under the usual protection rules.
+3. THE Raid list and search SHALL show each target's toughness as 1 to 5 stars, from the strength of its defenses.
+4. THE Fort report and island labels SHALL show each haunted fort's toughness as 1 to 5 stars, one per fort level.

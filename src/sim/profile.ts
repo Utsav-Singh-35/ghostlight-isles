@@ -25,6 +25,8 @@ export interface Report {
   readonly title: string;
   readonly detail: string;
   readonly tone: 'good' | 'bad' | 'neutral';
+  /** For raids on this captain: the raider's id and name, so they can be raided back. */
+  readonly from?: { readonly id: string; readonly name: string };
 }
 
 export type BattleKind = 'capture' | 'raid' | 'ghost';
@@ -100,6 +102,8 @@ export interface Profile {
   readonly stats: Stats;
   readonly reports: readonly Report[];
   readonly battle: PendingBattle | null;
+  /** Battles left in a new captain's trial of every weapon. Missing on captains saved before trials, which means none. */
+  readonly trialBattles?: number;
 }
 
 /** A profile without its secrets: safe to send to the client. */
@@ -129,6 +133,7 @@ export function createProfile(id: string, name: string, tokenHash: string, now: 
     stats: { raidsWon: 0, captures: 0, ghostRaidsRepelled: 0, ghostShipsSunk: 0, timesSunk: 0 },
     reports: [],
     battle: null,
+    trialBattles: ECONOMY.trialBattles,
   };
 }
 
@@ -140,16 +145,29 @@ export function publicProfile(profile: Profile): PublicProfile {
   return rest;
 }
 
-/** The ship and crew a profile takes into battle. */
+/** Trial battles a profile has left. */
+export function trialLeft(profile: Pick<Profile, 'trialBattles'>): number {
+  const n = profile.trialBattles ?? 0;
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+/** Uses up one trial battle, if any are left. */
+export function useTrialBattle(profile: Profile): Profile {
+  const left = trialLeft(profile);
+  return left > 0 ? { ...profile, trialBattles: left - 1 } : profile;
+}
+
+/** The ship and crew a profile takes into battle. During a new captain's trial every weapon is at level 1 or more. */
 export function loadoutOf(profile: Profile): Loadout {
   const hullLevel = clamp(profile.weapons.hull, 1, 3);
+  const lend = trialLeft(profile) > 0 ? 1 : 0;
   return {
     hull: ECONOMY.hull[hullLevel - 1]!,
-    cannon: profile.weapons.cannon,
-    salt: profile.weapons.salt,
-    barrel: profile.weapons.barrel,
-    bats: profile.weapons.bats,
-    mortar: profile.weapons.mortar ?? 0,
+    cannon: Math.max(lend, profile.weapons.cannon),
+    salt: Math.max(lend, profile.weapons.salt),
+    barrel: Math.max(lend, profile.weapons.barrel),
+    bats: Math.max(lend, profile.weapons.bats),
+    mortar: Math.max(lend, profile.weapons.mortar ?? 0),
     gunner: profile.crew.gunner.state,
     navigator: profile.crew.navigator.state,
   };

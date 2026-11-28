@@ -12,7 +12,8 @@ const PERIOD = BLOOD_MOON.periodSeconds * 1000;
 /** Midway through a shared Blood Moon window. */
 const DURING_MOON = PERIOD * 1_500_000 + 60_000;
 /** Well outside any window. */
-const NO_MOON = PERIOD * 1_500_000 + 600_000;
+// Halfway between the end of one Blood Moon and the start of the next, whatever the period.
+const NO_MOON = PERIOD * 1_500_000 + Math.round((BLOOD_MOON.durationSeconds * 1000 + PERIOD) / 2);
 
 function stored(server: TestServer, id: string): Profile {
   return JSON.parse(server.store.data.get(`player:${id}`)!);

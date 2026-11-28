@@ -1630,3 +1630,27 @@ kbd {
   font-size: 0.8rem;
   color: rgba(227, 217, 194, 0.6);
 }
+
+/* Toughness stars: red, so they never read as the gold stars a battle earns. */
+.toughness {
+  color: #ff6b5a;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.cb-trial {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--spectral);
+}
+.cb-trial[hidden] {
+  display: none;
+}
+.sp-search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+.sp-found {
+  grid-column: 1 / -1;
+}

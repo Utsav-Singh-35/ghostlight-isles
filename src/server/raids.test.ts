@@ -123,3 +123,39 @@ describe('raids spec', () => {
     expect(board.data.you.rank).toBeGreaterThan(0);
   });
 });
+
+describe('raids spec: finding rivals and paying them back', () => {
+  // Feature: raids, Property 6. Validates: Requirements 5.1, 5.2
+  it('Property 6: revenge finds the raider', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 1, max: 1_000_000 }), plan, async (seed, p) => {
+        const server = testServer(seed);
+        const raider = await server.guest();
+        const victim = await server.guest();
+        patch(server, raider.profile.id, { defenses: [{ type: 'cannonTower', level: 2, slot: 3 }, { type: 'boneCatapult', level: 1, slot: 1 }] });
+        const start = await server.call('POST', '/raids/start', { targetId: victim.profile.id }, raider.token);
+        const inputs = inputsFor(p, start.data.ticket.setup);
+        await server.call('POST', '/raids/finish', { id: start.data.ticket.id, inputs }, raider.token);
+        const report = stored(server, victim.profile.id).reports[0]!;
+        expect(report.from).toEqual({ id: raider.profile.id, name: raider.profile.name });
+        // The victim may be protected now, but raiding back is always open: raiders get no protection.
+        const back = await server.call('POST', '/raids/start', { targetId: report.from!.id }, victim.token);
+        expect(back.status).toBe(200);
+        expect(back.data.ticket.setup.defenses).toEqual(stored(server, raider.profile.id).defenses);
+      }),
+      { numRuns: 30 },
+    );
+  }, 60_000);
+
+  it('finds a captain by username in any case, with their toughness, and never yourself', async () => {
+    const server = testServer(77);
+    const a = await server.guest();
+    const b = await server.guest();
+    const reg = await server.call('POST', '/register', { username: 'Hollis_Crane', password: 'sea-shanties' }, a.token);
+    expect((await server.call('GET', '/raids/find/hollis_CRANE', undefined, b.token)).data.target).toMatchObject({ id: a.profile.id, name: 'Hollis_Crane', toughness: 1 });
+    expect((await server.call('GET', '/raids/find/Nobody_Else', undefined, b.token)).status).toBe(404);
+    expect((await server.call('GET', '/raids/find/Hollis_Crane', undefined, reg.data.token)).status).toBe(400);
+    const list = await server.call('GET', '/raids/targets', undefined, b.token);
+    for (const t of list.data.targets) expect(t.toughness).toBeGreaterThanOrEqual(1);
+  });
+});

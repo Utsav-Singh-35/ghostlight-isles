@@ -23,3 +23,9 @@
     - _Requirements: 3.2, 3.4_
   - [x] 3.3 Smoke test: build a Spirit Lantern from the panel
     - _Requirements: 1.1, 3.1, 3.2_
+
+- [x] 4. A new captain's trial of every weapon
+  - [x] 4.1 `trialBattles` on new profiles, lent weapons in `loadoutOf`, one trial battle used per finished battle
+  - [x] 4.2 The trial on the captain bar and at the shipwright
+  - _Requirements: 4.1 to 4.4_
+  - [x]* 4.3 Property 5 and an example for old saves

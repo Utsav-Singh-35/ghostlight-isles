@@ -7,7 +7,8 @@ import { addReport, loadoutOf, publicProfile, type PendingBattle, type Profile }
 import { hashSeed } from '../sim/rng';
 import { afterBattle } from './aftermath';
 import { requireAfloat } from './capture';
-import { loadProfile, readIndex, saveProfile } from './players';
+import { baseRating, toughnessStars } from '../sim/toughness';
+import { findByUsername, loadProfile, readIndex, saveProfile } from './players';
 import { RIVALS, findRival, protectRival, rivalProtectedUntil, rivalStorage } from './rivals';
 import { HttpError, randomHex, route, stringField } from './router';
 
@@ -40,6 +41,18 @@ function describeLoot(r: Resources): string {
   return parts.join(' and ');
 }
 
+/** A captain as a raid target. */
+function captainTarget(p: Profile) {
+  return { id: p.id, name: p.name, kind: 'captain' as const, homeLevel: p.homeLevel, defenses: p.defenses.length, infamy: p.infamy, loot: lootOf(p.resources), toughness: toughnessStars(baseRating(p)), protectedUntil: p.protectedUntil };
+}
+
+route('GET', '/raids/find/:username', true, async ({ ctx, params, profile }) => {
+  const found = await findByUsername(ctx.store, params.username ?? '');
+  if (!found) throw new HttpError(404, `No captain is called ${String(params.username ?? '').slice(0, 20)}.`);
+  if (found.id === profile.id) throw new HttpError(400, "That's you. Find someone else to raid.");
+  return { target: captainTarget(found), now: ctx.now() };
+});
+
 route('GET', '/raids/targets', true, async ({ ctx, profile }) => {
   const now = ctx.now();
   const index = await readIndex(ctx.store);
@@ -52,12 +65,12 @@ route('GET', '/raids/targets', true, async ({ ctx, profile }) => {
   for (const entry of captains) {
     const p = await loadProfile(ctx.store, entry.id);
     if (!p) continue;
-    targets.push({ id: p.id, name: p.name, kind: 'captain', homeLevel: p.homeLevel, defenses: p.defenses.length, infamy: p.infamy, loot: lootOf(p.resources) });
+    targets.push(captainTarget(p));
   }
   for (const rival of RIVALS) {
     if (targets.length >= TARGET_LIMIT) break;
     if ((await rivalProtectedUntil(ctx.store, rival.id)) > now) continue;
-    targets.push({ id: rival.id, name: rival.name, kind: 'rival', homeLevel: rival.homeLevel, defenses: rival.layout.defenses.length, infamy: rival.infamy, loot: lootOf(rivalStorage(rival)) });
+    targets.push({ id: rival.id, name: rival.name, kind: 'rival', homeLevel: rival.homeLevel, defenses: rival.layout.defenses.length, infamy: rival.infamy, loot: lootOf(rivalStorage(rival)), toughness: toughnessStars(baseRating({ defenses: rival.layout.defenses, homeLevel: rival.homeLevel })) });
   }
   return { targets, now };
 });
@@ -123,6 +136,7 @@ route('POST', '/raids/finish', true, async ({ ctx, body, profile }) => {
             ? `${result.stars} of 3 stars, ${Math.round(result.destruction * 100)}% destroyed. They took ${describeLoot(taken)}. Your island is protected for ${REWARDS.raidProtectionHours} hours.`
             : 'Your defenses held and nothing was lost.',
         tone: result.destruction > 0 ? 'bad' : 'good',
+        from: { id: profile.id, name: profile.name },
       });
       await saveProfile(ctx, next);
     }

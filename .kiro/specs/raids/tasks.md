@@ -19,3 +19,9 @@
     - _Requirements: 3.3, 4.2_
   - [x] 2.3 Smoke test: raid a rival, open the log
     - _Requirements: 1.1, 4.2_
+
+- [x] 5. Finding rivals and paying them back
+  - [x] 5.1 Toughness stars from base strength; one star per fort level on labels and fort reports
+  - [x] 5.2 Search by username; the raider named on the defender's report, with a Raid back button
+  - _Requirements: 5.1 to 5.4_
+  - [x]* 5.3 Properties 5 and 6, a search example, smoke checks for the stars

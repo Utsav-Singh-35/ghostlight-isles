@@ -25,6 +25,8 @@ The amount spent on a defense is not stored; it is the sum of `COSTS[type][0..le
 **Validates: Requirement 1.3**
 
 **Property 4: The server and the rules agree.** *For any* sequence of base commands sent to the handler, the saved profile equals applying the same pure commands in order.
+
+**Property 5: The trial lends every weapon and takes nothing.** *For any* profile, while it has trial battles left its loadout has every weapon at level 1 or more and each at least the owned level; with none left the loadout is exactly the owned one; and each finished battle uses up exactly one trial battle, never going below zero. Validates Requirements 4.2, 4.3.
 **Validates: Requirements 1.1 to 2.3**
 
 ## Base view

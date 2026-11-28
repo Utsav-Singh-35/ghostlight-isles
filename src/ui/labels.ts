@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import { fortDifficulty } from '../sim/layout';
+import { fortToughness, starText } from '../sim/toughness';
 import type { ShipState } from '../sim/ship';
 import type { World } from '../sim/world';
 import { el, setText } from './dom';
@@ -71,7 +72,7 @@ export function createLabels(parent: HTMLElement, world: World, onSelect: (islan
         slot.label.title = ours ? '' : `Read the fort report for ${entry.island.name}`;
         setText(slot.name, entry.island.name);
         const metres = Math.max(0, Math.round(entry.distance / 10) * 10);
-        setText(slot.detail, `${home ? 'Your home' : ours ? 'Yours' : `Haunted · fort ${fortDifficulty(entry.island)}`} · ${metres} m`);
+        setText(slot.detail, `${home ? 'Your home' : ours ? 'Yours' : `Haunted · fort ${fortDifficulty(entry.island)} ${starText(fortToughness(fortDifficulty(entry.island)))}`} · ${metres} m`);
         slot.label.style.transform = `translate(${point.x.toFixed(1)}px, ${point.y.toFixed(1)}px) translate(-50%, -100%)`;
       });
     },

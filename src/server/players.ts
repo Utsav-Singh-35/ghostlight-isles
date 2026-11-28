@@ -1,4 +1,5 @@
 import type { Profile } from '../sim/profile';
+import { baseRating } from '../sim/toughness';
 import { verifyToken } from './credentials';
 import { HttpError, type ServerContext, type Store } from './router';
 
@@ -17,6 +18,8 @@ export interface IndexEntry {
 }
 
 const playerKey = (id: string) => `player:${id}`;
+/** Where a username's claim is kept: `{ id }`. */
+export const usernameKey = (username: string) => `user:${username.toLowerCase()}`;
 const indexKey = (id: string) => `index:${id}`;
 /** The single index record saved before each captain got their own. Read, never written. */
 const LEGACY_INDEX_KEY = 'index';
@@ -24,6 +27,19 @@ const ID_PATTERN = /^[0-9a-f]{16}$/;
 
 export function isPlayerId(id: string): boolean {
   return ID_PATTERN.test(id);
+}
+
+/** The registered captain with this username, in any letter case, or null. */
+export async function findByUsername(store: Store, username: string): Promise<Profile | null> {
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(username)) return null;
+  const claim = await store.get(usernameKey(username));
+  if (!claim) return null;
+  try {
+    const id = (JSON.parse(claim) as { id?: unknown }).id;
+    return typeof id === 'string' ? await loadProfile(store, id) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function loadProfile(store: Store, id: string): Promise<Profile | null> {
@@ -38,10 +54,8 @@ export async function loadProfile(store: Store, id: string): Promise<Profile | n
   }
 }
 
-/** Rough base strength: each tower and mine counts its level; the home level counts double. */
-export function baseRating(profile: Pick<Profile, 'defenses' | 'homeLevel'>): number {
-  return profile.defenses.reduce((sum, d) => sum + d.level, 0) + profile.homeLevel * 2;
-}
+export { baseRating } from '../sim/toughness';
+
 
 function parseEntry(text: string): IndexEntry | null {
   try {

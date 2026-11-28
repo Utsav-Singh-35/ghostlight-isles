@@ -190,6 +190,8 @@ async function main() {
     await sleep(300);
     const reportTitle = await cap.locator('.context-prompt:not([hidden]) .cp-title').textContent().catch(() => '');
     check(/fort 1 of 5/.test(reportTitle ?? ''), `clicking a fort's name opens its fort report (${reportTitle})`);
+    const reportText = (await cap.locator('.context-prompt:not([hidden])').textContent().catch(() => '')) ?? '';
+    check(/Toughness ★☆☆☆☆/.test(reportText), 'the fort report shows its toughness in stars');
     await cap.keyboard.press('KeyS');
     await cap.keyboard.press('Digit1');
     await cap.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 10000 }).catch(() => {});
@@ -210,6 +212,8 @@ async function main() {
     const ordersAfter = await cap.evaluate(() => window.__ghostlight.orders());
     check(ordersAfter.done.includes('island') && ordersAfter.done.includes('capture'), `the capture ticks off its orders (${ordersAfter.done.join(', ')})`);
     await cap.keyboard.press('KeyM');
+    // The HUD redraws its labels on the next frame, so wait for it instead of reading at once.
+    await cap.waitForFunction(() => [...document.querySelectorAll('.hud-top-right button')].some((b) => b.textContent === 'Sound: Off'), null, { timeout: 2000 }).catch(() => {});
     const muted = await cap.evaluate(() => window.__ghostlight.sound());
     const soundLabel = await cap.getByRole('button', { name: /^Sound:/ }).textContent();
     check(!muted.enabled && soundLabel === 'Sound: Off', `M turns the sound off and the HUD says so (${soundLabel})`);
@@ -279,6 +283,9 @@ async function main() {
     await raidPage.waitForSelector('.side-panel:not([hidden]) .sp-row', { timeout: 10000 }).catch(() => {});
     const targetCount = await raidPage.locator('.side-panel .sp-row').count();
     check(targetCount === 8, `R lists islands to raid (${targetCount})`);
+    const stars = await raidPage.locator('.side-panel .sp-row .toughness').count();
+    check(stars === targetCount, `every raid target shows its toughness in stars (${stars} of ${targetCount})`);
+    check(await raidPage.locator('.cb-trial').textContent().then((t) => /Trial: every weapon for [1-3] more/.test(t ?? '')), 'a captain early in their trial is told about it');
     await raidPage.screenshot({ path: join(SHOTS, '11-raid-list.png') });
     await raidPage.locator('.side-panel .sp-row').last().getByRole('button').click();
     await raidPage.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 10000 }).catch(() => {});

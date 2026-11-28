@@ -12,6 +12,7 @@ export class CaptainBar {
   private readonly ecto: HTMLElement;
   private readonly status: HTMLElement;
   private readonly moon: HTMLElement;
+  private readonly trial: HTMLElement;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'captain-bar');
@@ -24,7 +25,9 @@ export class CaptainBar {
     resources.append(this.gold, this.cursed, this.ecto);
     this.status = el('div', 'cb-status');
     this.moon = el('div', 'cb-moon');
-    this.root.append(this.name, resources, this.status, this.moon);
+    this.trial = el('div', 'cb-trial');
+    this.trial.title = 'A new captain carries every ship weapon at level 1. Buy them at the shipwright to keep them.';
+    this.root.append(this.name, resources, this.status, this.trial, this.moon);
     parent.append(this.root);
   }
 
@@ -44,6 +47,9 @@ export class CaptainBar {
     const shield = profile.protectedUntil > now ? ` · protected from raids for ${duration(profile.protectedUntil - now)}` : '';
     setText(this.status, saved + shield);
     this.status.classList.toggle('cb-offline', !online);
+    const trial = profile.trialBattles ?? 0;
+    setText(this.trial, trial > 0 ? `Trial: every weapon for ${trial} more ${trial === 1 ? 'battle' : 'battles'}` : '');
+    this.trial.hidden = trial <= 0;
   }
 
   setVisible(visible: boolean): void {
