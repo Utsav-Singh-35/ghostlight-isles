@@ -1,10 +1,10 @@
 import { Sound } from '../audio/sound';
 import type { Effect } from '../audio/synth';
-import { SHIP, TICK_SECONDS, WORLD } from '../sim/balance';
+import { SHIP, TICK_SECONDS, TROOPS, WORLD } from '../sim/balance';
 import { angleDelta } from '../sim/math';
 import { OrdersView } from '../ui/ordersView';
 import { ORDERS, currentOrder, observe, readDone, writeDone, type OrderId } from './orders';
-import { isRevealed, type BattleMode, type BattleResult, type BattleSetup, type BattleState, type InputEvent, type Loadout } from '../sim/battle';
+import { isRevealed, secondsToTicks, type BattleMode, type BattleResult, type BattleSetup, type BattleState, type InputEvent, type Loadout } from '../sim/battle';
 import type { RewardLine } from '../sim/captureRewards';
 import { hashSeed } from '../sim/rng';
 import type { ShipState } from '../sim/ship';
@@ -121,6 +121,8 @@ export class App {
   private readonly account: AccountPanel;
   /** While true in battle, the camera follows the fight ashore instead of the ship. */
   private watchFight = false;
+  /** Whether this battle's landing has started, so the camera follows it only once. */
+  private sawLanding = false;
   private readonly fleetNotice: Notice;
   private readonly locker: LockerView;
   /** How red the night is right now, easing toward the moon's state. */
@@ -921,7 +923,16 @@ export class App {
       const ship = interpolateShip(runner.prev.player.ship, runner.current.player.ship, alpha);
       const events = runner.takeEvents();
       const blood = runner.current.setup.mode === 'siege' ? 1 : 0;
-      const fight = this.watchFight ? fightCentre(runner.current) : null;
+      // When the party puts off, the camera goes with it once; C switches back to the ship.
+      if (runner.current.landing && !this.sawLanding) {
+        this.sawLanding = true;
+        this.watchFight = true;
+        this.renderer.rig.setView(0.62, 22);
+        this.toasts.show('Your party rows ashore. Press C to follow your ship.', 'neutral', 3);
+      }
+      const boats = this.renderer.battleLayer?.landingBoats ?? [];
+      const rowing = runner.current.landing && !runner.current.landing.done && boats.length > 0;
+      const fight = !this.watchFight ? null : rowing ? { x: boats.reduce((s, b) => s + b.x, 0) / boats.length, z: boats.reduce((s, b) => s + b.z, 0) / boats.length } : fightCentre(runner.current);
       this.renderer.render({
         ship,
         time: this.time,
@@ -937,7 +948,6 @@ export class App {
       // A lock on something destroyed or sunk lets go. (A ghost that slips into the fog stays locked.)
       const lock = this.keyboard.lock;
       if (lock && !lockable(runner.current, false).some((t) => t.id === lock)) this.keyboard.lock = 0;
-    this.watchFight = false;
       const layer = this.renderer.battleLayer;
       layer?.setLock(this.keyboard.lock);
       if (layer) this.battleHud.update(runner.current, layer, this.renderer, this.keyboard.salt, this.keyboard.lock);
@@ -998,6 +1008,7 @@ export class App {
     this.keyboard.salt = ticket.setup.mode === 'siege' && ticket.setup.loadout.salt > 0;
     this.keyboard.lock = 0;
     this.watchFight = false;
+    this.sawLanding = false;
     this.hud.setVisible(false);
     this.labels.setVisible(false);
     this.captainBar.setVisible(false);
@@ -1040,6 +1051,7 @@ export class App {
     this.keyboard.salt = false;
     this.keyboard.lock = 0;
     this.watchFight = false;
+    this.sawLanding = false;
     this.hud.setVisible(true);
     this.labels.setVisible(true);
     this.captainBar.setVisible(this.session !== null);
@@ -1126,6 +1138,9 @@ export class App {
           landed: s.landing?.done === true,
           defenders: s.troops.filter((x) => x.side === 'island' && !x.dead).length,
           boats: s.boats.filter((b) => !b.sunk).length,
+          landingBoats: this.renderer.battleLayer?.landingBoats ?? [],
+          landing: s.landing,
+          shipAt: { x: Math.round(s.player.ship.x), z: Math.round(s.player.ship.z) },
         };
       },
       resultShowing: () => this.results.visible,
@@ -1292,6 +1307,14 @@ export function fortObjective(setup: BattleSetup): string {
  * the garrison in a siege), or null when nobody is ashore.
  */
 export function fightCentre(state: BattleState): { x: number; z: number } | null {
+  // While the boats row in, watch the beach they make for.
+  if (state.landing && !state.landing.done) {
+    // Follow the boats from the ship to the beach.
+    const rowTicks = secondsToTicks(TROOPS.rowSeconds);
+    const p = Math.min(1, Math.max(0, (state.tick - (state.landing.tick - rowTicks)) / rowTicks));
+    const s = state.player.ship;
+    return { x: s.x + (state.landing.x - s.x) * p, z: s.z + (state.landing.z - s.z) * p };
+  }
   const siege = state.setup.mode === 'siege';
   const fighters = state.troops.filter((t) => !t.dead && (siege ? t.side !== 'player' : t.side === 'player'));
   if (fighters.length === 0) return null;

@@ -321,6 +321,8 @@ function troopMaterial(ghostly: boolean): THREE.MeshLambertMaterial {
 export interface TroopView {
   readonly troop: Troop;
   readonly team: Team;
+  /** A passenger in a boat: drawn at this height, sitting, with no marker or health bar. */
+  readonly seatedAt?: number;
 }
 
 /** An arrow in flight, drawn only. */
@@ -425,7 +427,7 @@ export class TroopSet {
     let rings = 0;
     let diamonds = 0;
     let bars = 0;
-    for (const { troop: t, team } of current) {
+    for (const { troop: t, team, seatedAt } of current) {
       const mesh = this.meshes.get(t.type)!;
       let fallen = 0;
       if (t.dead) {
@@ -440,7 +442,7 @@ export class TroopSet {
       const p = before.get(t.id) ?? t;
       const x = p.x + (t.x - p.x) * alpha;
       const z = p.z + (t.z - p.z) * alpha;
-      const ground = groundAt(x, z);
+      const ground = seatedAt ?? groundAt(x, z);
       const moving = Math.hypot(t.x - p.x, t.z - p.z) > 1e-4;
       const ghost = isGhostType(t.type);
       const sinceStrike = (tick - t.struckAt) * TICK_SECONDS;
@@ -451,12 +453,14 @@ export class TroopSet {
       this.euler.set(t.dead ? -Math.min(1.45, fallen * 4) : lunge, t.facing, moving ? Math.sin(time * 9 + t.id) * 0.06 : 0, 'YXZ');
       this.quat.setFromEuler(this.euler);
       this.scale.setScalar(TROOP_DRAW_SCALE);
+      // Passengers sit low in the boat.
+      if (seatedAt !== undefined) this.scale.set(TROOP_DRAW_SCALE, TROOP_DRAW_SCALE * 0.72, TROOP_DRAW_SCALE);
       mesh.setMatrixAt(index, this.matrix.compose(this.pos, this.quat, this.scale));
       // The fallen fade to grey.
       this.color.copy(TEAM_COLORS[team]);
       if (t.dead) this.color.lerp(this.dark, Math.min(1, fallen));
       mesh.setColorAt(index, this.color);
-      if (t.dead) continue;
+      if (t.dead || seatedAt !== undefined) continue;
 
       // A ring under your own, a diamond under the enemy's.
       const marker = team === 'mine' ? this.rings : this.diamonds;
@@ -567,13 +571,14 @@ export function gunboatGeometry(): THREE.BufferGeometry {
 export function rowboatGeometry(): THREE.BufferGeometry {
   const b = new MeshBuilder();
   const hull = new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
-  b.add(hull, '#7A5A40', placed([0, 0.4, 0], [0, 0, 0], [0.85, 0.45, 2.1]));
+  b.add(hull, '#B08660', placed([0, 0.4, 0], [0, 0, 0], [0.85, 0.45, 2.1]));
+  b.add(new THREE.BoxGeometry(1.72, 0.12, 4.1), '#E2D4B8', placed([0, 0.47, 0]), 1.1);
   b.add(new THREE.BoxGeometry(1.65, 0.1, 4.0), '#5A4030', placed([0, 0.42, 0]));
   for (const z of [-0.8, 0.2, 1.1]) b.add(new THREE.BoxGeometry(1.5, 0.08, 0.28), PALETTE.deck, placed([0, 0.36, z]));
   for (const s of [-1, 1]) b.add(new THREE.BoxGeometry(0.06, 0.06, 2.2), WOOD, placed([s * 1.0, 0.45, 0.2], [0, s * 0.5, s * 0.4]));
   b.add(new THREE.BoxGeometry(0.03, 0.4, 0.5), PALETTE.teamMine, placed([0, 1.0, -1.7]), 1.2);
   b.add(new THREE.BoxGeometry(0.03, 0.9, 0.03), WOOD, placed([0, 0.8, -1.7]));
-  b.add(new THREE.BoxGeometry(0.15, 0.19, 0.15), LANTERN, placed([0, 0.62, -1.55]), 1.8);
+  b.add(new THREE.BoxGeometry(0.32, 0.4, 0.32), LANTERN, placed([0, 1.35, -1.7]), 2.2);
   return b.build();
 }
 

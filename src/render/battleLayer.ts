@@ -13,10 +13,10 @@ import type { Shore } from './ocean';
 import { PALETTE } from './palette';
 import { createGhostShipModel, type GhostShipModel } from './shipMesh';
 import { GLOW_HEIGHT, StructureSet, createKeepMesh, type StructureView } from './structureMeshes';
-import { TroopSet, gunboatGeometry, portcullisGeometry, rowboatGeometry, type Team } from './troopMeshes';
+import { TroopSet, gunboatGeometry, portcullisGeometry, rowboatGeometry, type Team, type TroopView } from './troopMeshes';
 
 import { sampleWaveHeight } from './waves';
-import { GHOST_TROOPS, type Troop } from '../sim/troops';
+import { GHOST_TROOPS, TROOP_TYPES, type Troop, type TroopType } from '../sim/troops';
 
 /** Whose a troop is, as the player sees it: the dead are ghosts; in a siege the garrison is yours, in an assault the attackers are. */
 export function teamOf(t: Troop, siege: boolean): Team {
@@ -119,7 +119,11 @@ export class BattleLayer {
   private clock = 0;
   private gateMesh: THREE.Mesh | null = null;
   private readonly rowboatGeometry = rowboatGeometry();
-  private readonly rowboat = new THREE.Mesh(this.rowboatGeometry, this.propMaterial);
+  /** The landing flotilla: up to four rowboats, and where they set out from. */
+  private readonly rowboats: THREE.Mesh[] = Array.from({ length: 4 }, () => new THREE.Mesh(this.rowboatGeometry, this.propMaterial));
+  private rowFrom: { x: number; z: number } | null = null;
+  /** Who rows ashore, by seat, fixed when the landing starts. */
+  private passengers: TroopType[] = [];
   private readonly gunboatGeometry = gunboatGeometry();
   private readonly boatMeshes: THREE.Mesh[] = [];
   private readonly boatSink = new Map<number, number>();
@@ -181,8 +185,10 @@ export class BattleLayer {
       this.gateMesh.rotation.y = yaw;
       this.group.add(this.gateMesh);
     }
-    this.rowboat.visible = false;
-    this.group.add(this.rowboat);
+    for (const r of this.rowboats) {
+      r.visible = false;
+      this.group.add(r);
+    }
     for (let i = 0; i < state.boats.length; i++) {
       const boat = new THREE.Mesh(this.gunboatGeometry, this.propMaterial);
       boat.position.set(state.boats[i]!.ship.x, 0, state.boats[i]!.ship.z);
@@ -275,26 +281,79 @@ export class BattleLayer {
 
     // Troops ashore, and the gate until it falls.
     const siege = current.setup.mode === 'siege';
-    this.troops.update(prev.troops, current.troops.map((troop) => ({ troop, team: teamOf(troop, siege) })), alpha, current.tick, time, this.heightAt, camera);
+    const troopViews: TroopView[] = current.troops.map((troop) => ({ troop, team: teamOf(troop, siege) }));
     if (this.gateMesh) this.gateMesh.visible = !current.gate?.destroyed;
 
-    // The landing boat rows in from the ship's side of the island and stays beached.
+    // The landing: up to four rowboats pull from the ship to the beach side by side, the party
+    // sitting in them, then lie beached where the troops came ashore.
     const landing = current.landing;
-    this.rowboat.visible = landing !== null;
+    const passengers: TroopView[] = [];
+    for (const r of this.rowboats) r.visible = false;
     if (landing) {
+      if (!this.rowFrom) {
+        this.rowFrom = { x: current.player.ship.x, z: current.player.ship.z };
+        this.passengers = [];
+        for (const type of TROOP_TYPES) for (let k = 0; k < (current.aboard[type] ?? 0); k++) if (type !== 'deckhand') this.passengers.push(type);
+      }
       const rowTicks = secondsToTicks(TROOPS.rowSeconds);
       const p = clamp((current.tick - 1 + alpha - (landing.tick - rowTicks)) / rowTicks, 0, 1);
+      const eased = p * p * (3 - 2 * p);
+      const boats = clamp(Math.ceil(this.passengers.length / 4), 1, this.rowboats.length);
       const d = Math.max(1e-6, Math.hypot(landing.x, landing.z));
       const ux = landing.x / d;
       const uz = landing.z / d;
-      const from = this.radius + 14;
-      const to = this.radius * 0.97;
-      const r = lerp(from, to, p);
-      const x = ux * r;
-      const z = uz * r;
-      this.rowboat.position.set(x, Math.max(sampleWaveHeight(x, z, time), p >= 1 ? this.heightAt(x, z) - 0.3 : -1) , z);
-      this.rowboat.rotation.set(0, Math.atan2(-ux, -uz), p < 1 ? Math.sin(time * 3) * 0.06 : 0.12);
+      // Along the shore, either side of the landing point.
+      const sx = uz;
+      const sz = -ux;
+      const beachR = this.radius * 0.97;
+      for (let i = 0; i < boats; i++) {
+        const lane = (i - (boats - 1) / 2) * 3.6;
+        // They put off from the ship's sides, so the sails never hide them.
+        const spread = (i - (boats - 1) / 2) * 9;
+        const out = Math.abs(spread) < 7 ? (spread < 0 || (spread === 0 && i % 2 === 1) ? -7 : 7) : spread;
+        const fromX = this.rowFrom.x + sx * out;
+        const fromZ = this.rowFrom.z + sz * out;
+        const toX = ux * beachR + sx * lane;
+        const toZ = uz * beachR + sz * lane;
+        const x = lerp(fromX, toX, eased);
+        const z = lerp(fromZ, toZ, eased);
+        const heading = Math.atan2(toX - fromX, toZ - fromZ);
+        const stroke = p < 1 ? Math.sin(time * 7 + i) : 0;
+        const y = p < 1 ? sampleWaveHeight(x, z, time) - 0.15 + stroke * 0.05 : Math.max(this.heightAt(x, z) - 0.35, sampleWaveHeight(x, z, time) - 0.2);
+        const boat = this.rowboats[i]!;
+        boat.visible = true;
+        // Foam off the oars and a lantern glow, so the boats read on a night sea.
+        if (p < 1 && Math.floor(time * 6) !== Math.floor((time - dt) * 6)) {
+          this.bursts.spawn('splash', x, 0.2, z, 0.7, 0.6);
+          this.bursts.spawn('sparks', x - Math.sin(heading) * 2.4, y + 1.9, z - Math.cos(heading) * 2.4, 0.25, 0.3);
+        }
+        boat.position.set(x, y, z);
+        boat.scale.setScalar(1.4);
+        boat.rotation.set(stroke * 0.04, heading, p >= 1 ? 0.12 : Math.sin(time * 2.3 + i) * 0.05, 'YXZ');
+        // Seated until the boats ground; then the troops are ashore and the boats lie empty.
+        if (!landing.done) {
+          const seats = [[-0.4, -0.7], [0.4, -0.7], [-0.4, 0.6], [0.4, 0.6]] as const;
+          for (let s = 0; s < 4; s++) {
+            const type = this.passengers[i * 4 + s];
+            if (!type) break;
+            const [lx, lz] = seats[s]!;
+            const c = Math.cos(heading);
+            const sn = Math.sin(heading);
+            const px = x + (lx * c + lz * sn) * 1.4;
+            const pz = z + (-lx * sn + lz * c) * 1.4;
+            const hp = TROOPS.types[type].hp;
+            passengers.push({
+              troop: { id: 70_000 + i * 4 + s, type, side: 'player', x: px, z: pz, hp, maxHp: hp, cooldown: 0, slowedUntil: 0, postX: px, postZ: pz, facing: heading, struckAt: -100, dead: false },
+              team: current.setup.mode === 'siege' ? 'foe' : 'mine',
+              seatedAt: y + 0.2,
+            });
+          }
+        }
+      }
+    } else {
+      this.rowFrom = null;
     }
+    this.troops.update(prev.troops, [...troopViews, ...passengers], alpha, current.tick, time, this.heightAt, camera);
 
     // Support gunboats, riding the waves, sinking when holed.
     current.boats.forEach((b, i) => {
@@ -516,6 +575,11 @@ export class BattleLayer {
         b.spawn('sparks', e.toX, this.heightAt(e.toX, e.toZ) + 1, e.toZ, 0.6, 0.4);
         break;
     }
+  }
+
+  /** The landing boats on show, and where: for the smoke test. */
+  get landingBoats(): Array<{ x: number; y: number; z: number }> {
+    return this.rowboats.filter((r) => r.visible).map((r) => ({ x: Math.round(r.position.x), y: Math.round(r.position.y * 10) / 10, z: Math.round(r.position.z) }));
   }
 
   /** Marks this target as locked (0 for none). */
