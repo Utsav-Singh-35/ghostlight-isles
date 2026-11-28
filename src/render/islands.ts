@@ -4,6 +4,7 @@ import { fortDifficulty } from '../sim/layout';
 import { createRng, type Rng } from '../sim/rng';
 import type { Island, World } from '../sim/world';
 import { addFort, blockedByFort, fortStyle, hauntedKeepGeometry, keepScale } from './fortMeshes';
+import { BARRACKS_OFFSET, barracksGeometry } from './garrisons';
 import { MeshBuilder, placed, vertexColorMaterial, type Vec3 } from './meshBuilder';
 import type { Shore } from './ocean';
 import { PALETTE } from './palette';
@@ -397,6 +398,28 @@ export function createIslands(world: World): IslandScene {
       glows.push({ position: new THREE.Vector3(island.x, lampY, island.z), kind: 'lantern', size: 14, islandId: island.id });
       glassIslands.push(island.id);
       lights.push({ islandId: island.id, position: new THREE.Vector3(island.x, lampY, island.z), kind: 'lantern' });
+
+      // The barracks beside the lighthouse, where the garrison lives; its gate faces the lighthouse.
+      {
+        const { body, lamps } = barracksGeometry();
+        const yaw = Math.atan2(-BARRACKS_OFFSET.z, BARRACKS_OFFSET.x);
+        const by = heightAt(BARRACKS_OFFSET.x, BARRACKS_OFFSET.z) - 0.3;
+        const barracks = new THREE.Mesh(body, propMaterial);
+        barracks.position.set(island.x + BARRACKS_OFFSET.x, by, island.z + BARRACKS_OFFSET.z);
+        barracks.rotation.y = yaw;
+        barracks.name = 'barracks';
+        group.add(barracks);
+        disposables.push(body);
+        const c = Math.cos(yaw);
+        const s = Math.sin(yaw);
+        for (const [lx, ly, lz] of lamps) {
+          const p: Vec3 = [island.x + BARRACKS_OFFSET.x + lx * c + lz * s, by + ly, island.z + BARRACKS_OFFSET.z - lx * s + lz * c];
+          glass.push({ position: p, rotation: [0, yaw, 0], scale: [0.22, 0.3, 0.22] });
+          glassColors.push(lanternColor);
+          glows.push({ position: new THREE.Vector3(...p), kind: 'lantern', size: 2.6, islandId: island.id });
+          glassIslands.push(island.id);
+        }
+      }
 
       // A dock pointing at the spawn, with lanterns at its end.
       const dockStart = island.radius * 0.8;

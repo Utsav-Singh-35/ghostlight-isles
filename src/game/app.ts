@@ -12,7 +12,7 @@ import { createWorldState, generateWorld, isAground, stepWorld, type World, type
 import { ApiError } from '../net/backend';
 import { Session } from '../net/session';
 import { ECONOMY, FORTS, REWARDS } from '../sim/balance';
-import { DEFENSE_NAMES, SHIP_PART_NAMES, slotsFor } from '../sim/base';
+import { DEFENSE_NAMES, SHIP_PART_NAMES, crewOf, slotsFor } from '../sim/base';
 import { fortDifficulty, fortLayout, fortSetup, mineSlotPosition, slotPosition } from '../sim/layout';
 import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
@@ -358,6 +358,7 @@ export class App {
     this.renderer.setCapturedIslands(captured);
     this.labels.setCaptured(captured);
     this.renderer.setHomeDefenses(this.homeViews(profile));
+    this.renderer.setHomeGarrison(crewOf(profile).island);
     this.basePanel.update(profile, this.session?.now() ?? Date.now());
     this.checkLocker();
   }

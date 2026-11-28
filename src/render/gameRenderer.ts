@@ -12,7 +12,9 @@ import { PALETTE } from './palette';
 import { createShipModel, type ShipModel } from './shipMesh';
 import { createSky, type Sky } from './sky';
 import { StructureSet, fortDefenseViews, type StructureView } from './structureMeshes';
+import { IslandGarrisons } from './garrisons';
 import { TroopSet } from './troopMeshes';
+import type { TroopCounts } from '../sim/troops';
 import { sampleWaveHeight } from './waves';
 
 export type Quality = 'high' | 'low';
@@ -75,6 +77,7 @@ export class GameRenderer {
   /** The haunted forts' towers, vaults and powder stores. Captured forts show theirs as rubble. */
   private readonly fortDefenses: StructureSet;
   private readonly fortViews: ReturnType<typeof fortDefenseViews>;
+  private readonly garrisons: IslandGarrisons;
   private readonly ship: ShipModel;
   private readonly glows: Glows;
   private readonly wisps: Wisps;
@@ -160,6 +163,9 @@ export class GameRenderer {
     this.fortDefenses = new StructureSet(Math.max(1, this.fortViews.length));
     this.fortDefenses.set(this.fortViews);
     this.islands.group.add(this.fortDefenses.group);
+    // The troops who live on the islands: your garrison at the barracks, and the forts' ghosts.
+    this.garrisons = new IslandGarrisons(world, (id, x, z) => this.islands.groundAt(id, x, z));
+    this.islands.group.add(this.garrisons.group);
     this.scene.add(this.islands.group);
 
     this.ship = createShipModel();
@@ -246,6 +252,11 @@ export class GameRenderer {
     return this.lineup;
   }
 
+  /** Shows the captain's crew ashore walking round Last Light's barracks. */
+  setHomeGarrison(counts: TroopCounts): void {
+    this.garrisons.setHome(counts);
+  }
+
   /** Draws the player's defenses on Last Light. */
   setHomeDefenses(views: readonly StructureView[]): void {
     this.homeDefenses.set(views);
@@ -262,6 +273,7 @@ export class GameRenderer {
     this.captured = set;
     this.islands.setCaptured(set);
     this.fortDefenses.set(this.fortViews.map((v) => (set.has(v.islandId) ? { ...v, destroyed: true } : v)));
+    this.garrisons.setCaptured(set);
     this.glows.setCaptured(set);
     this.wisps.setCaptured(set);
   }
@@ -345,6 +357,7 @@ export class GameRenderer {
       }
       this.glows.update(time, this.scale);
       this.wisps.update(time, this.scale);
+      this.garrisons.update(time);
     }
 
     this.wake.update({ x: ship.x, z: ship.z, heading: ship.heading, speed: sunk ? 0 : ship.speed, maxSpeed: SHIP.maxSpeed }, dt, time, this.scale);
@@ -436,6 +449,7 @@ export class GameRenderer {
     this.homeDefenses.dispose();
     this.fortDefenses.dispose();
     this.lineup?.set.dispose();
+    this.garrisons.dispose();
     this.ship.dispose();
     this.glows.dispose();
     this.wisps.dispose();
