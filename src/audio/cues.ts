@@ -76,11 +76,18 @@ export function cueOf(event: BattleEvent, islandRadius: number): CueName | null 
     return Math.hypot(event.x, event.z) < islandRadius ? 'thud' : 'splash';
   }
   if (event.type === 'destroyed') return event.structure === 'keep' ? 'keepFalls' : 'explosion';
-  if (event.type === 'sunk') return event.kind === 'ghost' ? 'ghostWail' : 'shipSinks';
+  if (event.type === 'sunk') return event.kind === 'ghost' ? 'ghostWail' : event.kind === 'boat' ? 'explosion' : 'shipSinks';
   if (event.type === 'mine') return 'mine';
   // A powder store going up is an explosion: news the player needs, never dropped.
   if (event.type === 'powder') return 'explosion';
-  return 'bats';
+  if (event.type === 'bats') return 'bats';
+  // Troops ashore: blades and arrows, a Powder Monkey's keg, and the gate giving way.
+  if (event.type === 'strike') return event.ranged ? (event.troop === 'wraithArcher' ? 'zap' : 'thud') : 'hit';
+  if (event.type === 'blast' || event.type === 'gate') return 'explosion';
+  if (event.type === 'grapeshot') return 'tower';
+  if (event.type === 'landed') return 'splash';
+  // Heals and the fallen are seen, not heard, so a big melee doesn't drown the guns.
+  return null;
 }
 
 /** How loud a sound is at this distance, from 1 close by down to MIN_GAIN far away. */

@@ -1,8 +1,9 @@
-import { ECONOMY } from './balance';
+import { ECONOMY, TROOPS } from './balance';
 import type { BattleSetup, CrewState, Loadout } from './battle';
 import { capsFor, earn, tributeDue, type Resources } from './economy';
 import type { DefenseLevel, PlacedDefense } from './layout';
 import { clamp } from './math';
+import type { TroopCounts } from './troops';
 
 export interface CrewSlot {
   readonly state: CrewState;
@@ -18,6 +19,14 @@ export interface Weapons {
   readonly bats: number;
   /** The Pumpkin Mortar. Missing on captains saved before it existed, which means level 0. */
   readonly mortar?: number;
+  /** Support boats, 0 to TROOPS.maxBoats. Missing means none. */
+  readonly boats?: number;
+}
+
+/** A captain's fighters: the landing party aboard and the garrison ashore. */
+export interface Crew {
+  readonly ship: TroopCounts;
+  readonly island: TroopCounts;
 }
 
 export interface Report {
@@ -104,6 +113,8 @@ export interface Profile {
   readonly battle: PendingBattle | null;
   /** Battles left in a new captain's trial of every weapon. Missing on captains saved before trials, which means none. */
   readonly trialBattles?: number;
+  /** The captain's fighters. Missing on captains saved before troops, which means none. */
+  readonly troops?: Crew;
 }
 
 /** A profile without its secrets: safe to send to the client. */
@@ -134,6 +145,7 @@ export function createProfile(id: string, name: string, tokenHash: string, now: 
     reports: [],
     battle: null,
     trialBattles: ECONOMY.trialBattles,
+    troops: { ship: { ...TROOPS.start.ship }, island: { ...TROOPS.start.island } },
   };
 }
 
@@ -168,6 +180,7 @@ export function loadoutOf(profile: Profile): Loadout {
     barrel: Math.max(lend, profile.weapons.barrel),
     bats: Math.max(lend, profile.weapons.bats),
     mortar: Math.max(lend, profile.weapons.mortar ?? 0),
+    boats: clamp(profile.weapons.boats ?? 0, 0, TROOPS.maxBoats),
     gunner: profile.crew.gunner.state,
     navigator: profile.crew.navigator.state,
   };

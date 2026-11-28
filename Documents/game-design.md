@@ -103,6 +103,29 @@ Haunted islands are taken by battle only: destroy every tower and the keep (the 
 
 The Lantern Lines puzzle is now only the escape from Davy Jones' Locker: rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. The server picks a new seed for every escape, and every generated puzzle has a solution.
 
+## Crew, landing parties and support boats (code)
+Recruit fighters at the **Tavern** (base panel) and post each one **aboard** (the landing party) or **ashore** (Last Light's garrison). Space aboard is **8 / 12 / 16** by hull level; ashore **6 / 10 / 14** by home level. Moving a troop is free; the fallen are gone. A new captain starts with 3 Buccaneers and an Archer aboard, 2 Buccaneers and a Deckhand ashore.
+
+| Troop | Health | Hits | Space | Cost | Does |
+|---|---|---|---|---|---|
+| Deckhand | 40 | none | 1 | 40 gold | Aboard: patches the hull 1.2/s. Ashore: mends towers 1.5/s (never the keep) |
+| Cutlass Buccaneer | 70 | 12 every 1 s | 1 | 50 gold | Attacks the nearest enemy |
+| Shieldbearer | 220 | 6 every 1 s | 3 | 120 gold | Every enemy troop within 8 m must fight it |
+| Lantern Archer | 35 | 9 every 1.2 s, 14 m | 1 | 70 gold | Shoots troops first, over walls |
+| Powder Monkey | 30 | blast | 1 | 90 gold | Runs at the gate (or a tower): 400 to the gate, then he's gone |
+| Anchor Brute | 480 | 30 every 2 s, splash | 5 | 300 gold + 15 ecto | Smashes towers, the gate and the keep; ignores troops. Home level 2 |
+| Ship's Surgeon | 50 | none | 2 | 110 gold | Heals the most hurt ally within 6 m, 10/s |
+
+**Forts' ghost troops** guard the space inside the walls: Bone Rattlers (50 health), Drowned Grabbers (90, slow what they hit), Wraith Archers (30, 12 m) and Headless Bosuns (400, heavy swings). Level 1 has 3 Rattlers; level 5 has 6 Rattlers, 3 Grabbers, 3 Wraith Archers and 2 Bosuns. The wall has **one gate** (250 to 700 health by level); no troop crosses the wall until it falls.
+
+**Landing:** press **L** within **25 m** of the shore (**60 m** with a support boat afloat). Everyone aboard but the Deckhands rows ashore 3 s later, once per battle. Towers fire at troops too, at half damage.
+
+**Support boats** (shipwright: 450 gold, then 900 gold + 20 ecto; up to 2) follow the ship, take station 12 m off the shore and fire grapeshot (4 pellets × 6, 30 m, every 1.5 s) at enemy troops only, never at towers. They have 70 health and are back for the next battle if sunk.
+
+**Sieges:** each ghost ship lands 1 to 3 Rattlers on Last Light once; the garrison fights them.
+
+**Raids:** a raided captain's island troops defend it, but the defender loses none: the raider fights a copy.
+
 ## Raids (asynchronous multiplayer)
 - **Toughness:** every raid target shows 1 to 5 red stars from its rating (each defense counts its level, the home level counts double): up to 6 is 1 star, 14 is 2, 24 is 3, 38 is 4, more is 5. Haunted forts show one star per fort level.
 - **Finding captains:** search the raid list by username. When someone raids you, your log names them with a **Raid back** button; raiders get no protection, so revenge is always open.

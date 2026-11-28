@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { isMineVisible, isRevealed, type BattleEvent, type BattleState, type Shot } from '../sim/battle';
+import { TROOPS } from '../sim/balance';
+import { isMineVisible, isRevealed, secondsToTicks, type BattleEvent, type BattleState, type Shot } from '../sim/battle';
+import { fortWalls } from '../sim/layout';
 import { TAU, clamp, lerp, lerpAngle } from '../sim/math';
 import { createRng } from '../sim/rng';
 import type { Island } from '../sim/world';
@@ -11,6 +13,7 @@ import type { Shore } from './ocean';
 import { PALETTE } from './palette';
 import { createGhostShipModel, type GhostShipModel } from './shipMesh';
 import { GLOW_HEIGHT, StructureSet, createKeepMesh, type StructureView } from './structureMeshes';
+import { TroopSet, gunboatGeometry, portcullisGeometry, rowboatGeometry } from './troopMeshes';
 import { sampleWaveHeight } from './waves';
 
 /** Boulders along the shore, and graves and dead trees on haunted islands, clear of towers and of the fort (`walls`, if any). Visual only. */
@@ -101,6 +104,15 @@ export class BattleLayer {
   private readonly flameMaterial = new THREE.MeshBasicMaterial({ color: this.flameColor.clone().multiplyScalar(1.5), toneMapped: false });
   private readonly propMaterial = vertexColorMaterial();
   private readonly props: THREE.InstancedMesh[];
+  /** Troops, the fort's portcullis, the landing boat and the support gunboats. */
+  private readonly troops = new TroopSet(TROOPS.maxTroops);
+  private heightAt: (x: number, z: number) => number = () => 0.5;
+  private gateMesh: THREE.Mesh | null = null;
+  private readonly rowboatGeometry = rowboatGeometry();
+  private readonly rowboat = new THREE.Mesh(this.rowboatGeometry, this.propMaterial);
+  private readonly gunboatGeometry = gunboatGeometry();
+  private readonly boatMeshes: THREE.Mesh[] = [];
+  private readonly boatSink = new Map<number, number>();
   /** The locked target's id, and the warm ring that marks it. */
   private lock = 0;
   private readonly lockRing = new THREE.Mesh(
@@ -143,9 +155,34 @@ export class BattleLayer {
     }
     this.group.add(this.structures.group);
 
+    this.heightAt = heightAt;
+    this.group.add(this.troops.group);
+    if (state.gate && fortLevel > 0) {
+      // The portcullis stands in the gateway the battle rules use, across the wall's line.
+      const walls = fortWalls(island.radius, fortLevel, island.seed);
+      const c0 = walls.corners[walls.gateIndex]!;
+      const c1 = walls.corners[(walls.gateIndex + 1) % walls.corners.length]!;
+      const yaw = Math.atan2(c1.x - c0.x, c1.z - c0.z);
+      const width = Math.min(3.4, Math.hypot(c1.x - c0.x, c1.z - c0.z) * 0.4);
+      const height = 2.2 + 0.45 * fortLevel + 0.4;
+      const geometry = portcullisGeometry(width, height).rotateY(Math.PI / 2);
+      this.gateMesh = new THREE.Mesh(geometry, this.propMaterial);
+      this.gateMesh.position.set(state.gate.x, heightAt(state.gate.x, state.gate.z) - 0.6, state.gate.z);
+      this.gateMesh.rotation.y = yaw;
+      this.group.add(this.gateMesh);
+    }
+    this.rowboat.visible = false;
+    this.group.add(this.rowboat);
+    for (let i = 0; i < state.boats.length; i++) {
+      const boat = new THREE.Mesh(this.gunboatGeometry, this.propMaterial);
+      boat.position.set(state.boats[i]!.ship.x, 0, state.boats[i]!.ship.z);
+      this.boatMeshes.push(boat);
+      this.group.add(boat);
+    }
+
     if (!island.living && fortLevel > 0) {
       const walls = new MeshBuilder();
-      this.flamePoints = addFort(walls, island.radius, fortLevel, island.seed, heightAt).flames;
+      this.flamePoints = addFort(walls, island.radius, fortLevel, island.seed, heightAt, { x: 0, z: 0 }, !state.gate).flames;
       this.fort = new THREE.Mesh(walls.build(), this.terrainMaterial);
       this.fort.name = 'battle-fort';
       this.group.add(this.fort);
@@ -225,6 +262,45 @@ export class BattleLayer {
       this.keep.mesh.rotation.z = keep.destroyed ? 0.12 : 0;
       this.keep.glass.visible = !keep.destroyed;
     }
+
+    // Troops ashore, and the gate until it falls.
+    this.troops.update(prev.troops, current.troops, alpha, current.tick, time, this.heightAt);
+    if (this.gateMesh) this.gateMesh.visible = !current.gate?.destroyed;
+
+    // The landing boat rows in from the ship's side of the island and stays beached.
+    const landing = current.landing;
+    this.rowboat.visible = landing !== null;
+    if (landing) {
+      const rowTicks = secondsToTicks(TROOPS.rowSeconds);
+      const p = clamp((current.tick - 1 + alpha - (landing.tick - rowTicks)) / rowTicks, 0, 1);
+      const d = Math.max(1e-6, Math.hypot(landing.x, landing.z));
+      const ux = landing.x / d;
+      const uz = landing.z / d;
+      const from = this.radius + 14;
+      const to = this.radius * 0.97;
+      const r = lerp(from, to, p);
+      const x = ux * r;
+      const z = uz * r;
+      this.rowboat.position.set(x, Math.max(sampleWaveHeight(x, z, time), p >= 1 ? this.heightAt(x, z) - 0.3 : -1) , z);
+      this.rowboat.rotation.set(0, Math.atan2(-ux, -uz), p < 1 ? Math.sin(time * 3) * 0.06 : 0.12);
+    }
+
+    // Support gunboats, riding the waves, sinking when holed.
+    current.boats.forEach((b, i) => {
+      const mesh = this.boatMeshes[i];
+      if (!mesh) return;
+      const before = prev.boats[i] ?? b;
+      const x = lerp(before.ship.x, b.ship.x, alpha);
+      const z = lerp(before.ship.z, b.ship.z, alpha);
+      let sink = 0;
+      if (b.sunk) {
+        if (!this.boatSink.has(b.id)) this.boatSink.set(b.id, time);
+        sink = clamp((time - this.boatSink.get(b.id)!) / 2.5, 0, 1) * 3;
+      }
+      mesh.visible = sink < 3;
+      mesh.position.set(x, sampleWaveHeight(x, z, time) * 0.9 - 0.25 - sink, z);
+      mesh.rotation.set(Math.sin(time * 1.7 + i) * 0.06, lerpAngle(before.ship.heading, b.ship.heading, alpha), Math.sin(time * 1.3 + i * 2) * 0.08 + sink * 0.2, 'YXZ');
+    });
 
     // Ghost ships.
     current.ghosts.forEach((g, i) => {
@@ -393,6 +469,36 @@ export class BattleLayer {
       }
       case 'bats':
         break;
+      case 'strike': {
+        const ghost = e.troop === 'rattler' || e.troop === 'grabber' || e.troop === 'wraithArcher' || e.troop === 'bosun';
+        const y = this.heightAt(e.toX, e.toZ) + 1.4;
+        if (e.ranged) b.spawn(ghost ? 'spirit' : 'sparks', e.toX, y, e.toZ, 0.35, 0.3);
+        else b.spawn(ghost ? 'spirit' : 'sparks', (e.x + e.toX) / 2, y, (e.z + e.toZ) / 2, 0.25, 0.2);
+        break;
+      }
+      case 'heal':
+        b.spawn('sparks', e.x, this.heightAt(e.x, e.z) + 1.8, e.z, 0.3, 0.4);
+        break;
+      case 'blast':
+        b.spawn('blast', e.x, this.heightAt(e.x, e.z) + 1, e.z, 1.6, 1.1);
+        b.spawn('smoke', e.x, this.heightAt(e.x, e.z) + 1.5, e.z, 1.4, 1.4);
+        break;
+      case 'gate':
+        b.spawn('blast', e.x, this.heightAt(e.x, e.z) + 2, e.z, 2.4, 1.6);
+        b.spawn('smoke', e.x, this.heightAt(e.x, e.z) + 2.5, e.z, 2.2, 2.2);
+        break;
+      case 'fallen': {
+        const ghost = e.side === 'ghost' || e.troop === 'rattler' || e.troop === 'grabber' || e.troop === 'wraithArcher' || e.troop === 'bosun';
+        b.spawn(ghost ? 'spirit' : 'smoke', e.x, this.heightAt(e.x, e.z) + 1, e.z, ghost ? 0.9 : 0.5, 0.8);
+        break;
+      }
+      case 'landed':
+        b.spawn('splash', e.x * 1.15, 0.2, e.z * 1.15, 1.2, 1);
+        break;
+      case 'grapeshot':
+        b.spawn('smoke', e.x, 1.2, e.z, 0.5, 0.5);
+        b.spawn('sparks', e.toX, this.heightAt(e.toX, e.toZ) + 1, e.toZ, 0.6, 0.4);
+        break;
     }
   }
 
@@ -434,6 +540,10 @@ export class BattleLayer {
     (this.lockRing.material as THREE.Material).dispose();
     this.keep.dispose();
     this.structures.dispose();
+    this.troops.dispose();
+    this.gateMesh?.geometry.dispose();
+    this.rowboatGeometry.dispose();
+    this.gunboatGeometry.dispose();
     for (const model of this.ghostModels) model.dispose();
     this.darkShots.geometry.dispose();
     this.glowShots.geometry.dispose();

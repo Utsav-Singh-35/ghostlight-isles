@@ -97,6 +97,21 @@ export const GHOST_SHIP: ShipStats = {
   radius: 4,
 };
 
+/** A support boat: small, quick and nimble, so it keeps up with the ship and holds its station. */
+export const SUPPORT_BOAT: ShipStats = {
+  maxSpeed: 15,
+  accel: 5,
+  decel: 5,
+  sailRate: 1.5,
+  maxSailLevel: 2,
+  maxTurnRate: 1.2,
+  minSteerage: 0.6,
+  steerageSpeed: 3,
+  rudderRate: 4,
+  turnDrag: 0.1,
+  radius: 2.2,
+};
+
 // ---- Battles ----------------------------------------------------------------------------
 
 export const BATTLE = {
@@ -242,6 +257,8 @@ export const COSTS = {
   barrel: [{ gold: 400, ectoplasm: 0 }, { gold: 800, ectoplasm: 0 }, { gold: 1600, ectoplasm: 0 }],
   bats: [{ gold: 0, ectoplasm: 60 }, { gold: 0, ectoplasm: 120 }, { gold: 0, ectoplasm: 240 }],
   mortar: [{ gold: 500, ectoplasm: 20 }, { gold: 1000, ectoplasm: 40 }, { gold: 2000, ectoplasm: 80 }],
+  /** Support boats: the first and the second. */
+  boats: [{ gold: 450, ectoplasm: 0 }, { gold: 900, ectoplasm: 20 }],
   hull: [null, { gold: 700, ectoplasm: 0 }, { gold: 1800, ectoplasm: 60 }],
   /** Removing a defense returns this share of everything spent on it. */
   refund: 0.5,
@@ -317,6 +334,83 @@ export const REWARDS = {
   ghostShipEctoplasm: 8,
   /** Rival captains' storage refills to this share of their cap. */
   rivalFill: 0.6,
+} as const;
+
+/**
+ * Troops: the landing party aboard, the garrison ashore and a fort's ghost troops. Health, damage
+ * per hit, reach (metres to the target's edge), seconds between hits, walking speed (m/s), space
+ * taken, and the price at the Tavern. Ghost troops can't be recruited.
+ */
+export const TROOPS = {
+  types: {
+    deckhand: { hp: 40, damage: 0, range: 1.6, cooldownSeconds: 1, speed: 3.0, space: 1, cost: { gold: 40, ectoplasm: 0 }, minHome: 1 },
+    buccaneer: { hp: 70, damage: 12, range: 1.6, cooldownSeconds: 1, speed: 3.4, space: 1, cost: { gold: 50, ectoplasm: 0 }, minHome: 1 },
+    shieldbearer: { hp: 220, damage: 6, range: 1.8, cooldownSeconds: 1, speed: 2.4, space: 3, cost: { gold: 120, ectoplasm: 0 }, minHome: 1 },
+    archer: { hp: 35, damage: 9, range: 14, cooldownSeconds: 1.2, speed: 3.0, space: 1, cost: { gold: 70, ectoplasm: 0 }, minHome: 1 },
+    powderMonkey: { hp: 30, damage: 120, range: 1.4, cooldownSeconds: 1, speed: 4.6, space: 1, cost: { gold: 90, ectoplasm: 0 }, minHome: 1 },
+    brute: { hp: 480, damage: 30, range: 2.2, cooldownSeconds: 2, speed: 1.9, space: 5, cost: { gold: 300, ectoplasm: 15 }, minHome: 2 },
+    surgeon: { hp: 50, damage: 0, range: 6, cooldownSeconds: 1, speed: 3.0, space: 2, cost: { gold: 110, ectoplasm: 0 }, minHome: 1 },
+    rattler: { hp: 50, damage: 10, range: 1.6, cooldownSeconds: 1, speed: 3.0, space: 1, cost: { gold: 0, ectoplasm: 0 }, minHome: 9 },
+    grabber: { hp: 90, damage: 7, range: 1.6, cooldownSeconds: 1, speed: 2.6, space: 1, cost: { gold: 0, ectoplasm: 0 }, minHome: 9 },
+    wraithArcher: { hp: 30, damage: 8, range: 12, cooldownSeconds: 1.3, speed: 3.2, space: 1, cost: { gold: 0, ectoplasm: 0 }, minHome: 9 },
+    bosun: { hp: 400, damage: 28, range: 2.2, cooldownSeconds: 2, speed: 2.0, space: 3, cost: { gold: 0, ectoplasm: 0 }, minHome: 9 },
+  },
+  /** Space aboard by hull level, and ashore by home level. */
+  shipSpace: [8, 12, 16],
+  islandSpace: [6, 10, 14],
+  /** A new captain's crew. */
+  start: { ship: { buccaneer: 3, archer: 1 }, island: { buccaneer: 2, deckhand: 1 } },
+  /** The party can row ashore from this far off the shore, metres; farther with a support boat. */
+  landReach: 25,
+  boatLandReach: 60,
+  rowSeconds: 3,
+  /** Each Deckhand aboard repairs the hull this much per second; ashore, a tower this much. */
+  deckhandShipRepair: 1.2,
+  deckhandTowerRepair: 1.5,
+  /** A Surgeon heals this much per second. */
+  surgeonHeal: 10,
+  /** Enemy troops within this of a Shieldbearer must fight it. */
+  tauntRadius: 8,
+  /** Defenders leave their posts for enemies within this of the post. */
+  sight: 22,
+  /** A Powder Monkey's blast: damage to the gate, to troops around it, and its radius. */
+  powderGateDamage: 400,
+  powderTroopDamage: 40,
+  powderSplash: 3,
+  /** An Anchor Brute's and a Headless Bosun's swing hits enemy troops this far round the target. */
+  heavySplash: 2,
+  /** A Drowned Grabber slows what it hits to this share of its speed, for this long. */
+  grabSlow: 0.6,
+  grabSeconds: 2,
+  /** Shots from towers and ghost ships deal this share of their damage to a troop: guns are made for ships. */
+  shotDamageShare: 0.5,
+  /** Troops keep this far apart, and towers hit a troop within this of where a shot lands. */
+  spacing: 0.9,
+  hitRadius: 1.0,
+  /** The keep's edge, for troops attacking it, metres from the centre. */
+  keepRadius: 4,
+  /** How far inland the beach reaches: troops stay within this share of the island's radius. */
+  beach: 0.86,
+  /** The gate: health by fort level, and how far either side of it a troop may pass once it falls. */
+  gateHp: [250, 350, 450, 560, 700],
+  gateHalfWidth: 1.8,
+  /** A fort's ghost troops by fort level − 1. */
+  fortGarrison: [
+    { rattler: 3 },
+    { rattler: 4, grabber: 1 },
+    { rattler: 4, grabber: 2, wraithArcher: 2 },
+    { rattler: 5, grabber: 2, wraithArcher: 3, bosun: 1 },
+    { rattler: 6, grabber: 3, wraithArcher: 3, bosun: 2 },
+  ],
+  /** Ghost boarders each ghost ship lands in a siege, by fleet level − 1. */
+  boarders: [1, 2, 2, 3, 3],
+  /** At most this many troops in one battle. */
+  maxTroops: 48,
+  /** Support boats: how many a ship can have (prices in COSTS.boats), their health and grapeshot. */
+  maxBoats: 2,
+  boatHp: 70,
+  boatStation: 12,
+  grapeshot: { pellets: 4, damage: 6, range: 30, reloadSeconds: 1.5 },
 } as const;
 
 export const ACCOUNTS = {

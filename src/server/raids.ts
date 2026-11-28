@@ -1,5 +1,6 @@
 import { BATTLE, REWARDS, WORLD } from '../sim/balance';
-import { slotsFor } from '../sim/base';
+import { crewOf, slotsFor } from '../sim/base';
+import type { TroopCounts } from '../sim/troops';
 import { runBattle, type BattleSetup, type Loadout } from '../sim/battle';
 import { capsFor, earn, takeShare, type Resources } from '../sim/economy';
 import type { DefenseLevel, PlacedDefense } from '../sim/layout';
@@ -16,7 +17,7 @@ const TARGET_LIMIT = 8;
 const HOUR = 3_600_000;
 
 /** A battle setup against an island shaped like Last Light, with the defender's own defenses. */
-export function raidSetup(homeLevel: DefenseLevel, defenses: readonly PlacedDefense[], islandSeed: number, loadout: Loadout, seed: number): BattleSetup {
+export function raidSetup(homeLevel: DefenseLevel, defenses: readonly PlacedDefense[], islandSeed: number, loadout: Loadout, seed: number, party: TroopCounts = {}, garrison: TroopCounts = {}): BattleSetup {
   const slots = slotsFor(homeLevel);
   return {
     seed,
@@ -26,7 +27,14 @@ export function raidSetup(homeLevel: DefenseLevel, defenses: readonly PlacedDefe
     loadout,
     fleet: { count: 0, level: 1 },
     timeLimitSeconds: BATTLE.timeLimitSeconds,
+    party,
+    garrison,
   };
+}
+
+/** A rival captain's crew ashore: more of them on bigger islands. */
+export function rivalGarrison(homeLevel: number): TroopCounts {
+  return homeLevel <= 1 ? { buccaneer: 2 } : homeLevel === 2 ? { buccaneer: 3, archer: 1 } : { buccaneer: 3, archer: 2, shieldbearer: 1 };
 }
 
 const lootOf = (storage: Resources) => ({
@@ -87,13 +95,13 @@ route('POST', '/raids/start', true, async ({ ctx, body, profile }) => {
   const rival = findRival(targetId);
   if (rival) {
     if ((await rivalProtectedUntil(ctx.store, rival.id)) > now) throw new HttpError(409, `${rival.name}'s island is protected for now.`);
-    setup = raidSetup(rival.homeLevel, rival.layout.defenses, rival.seed, loadoutOf(profile), seed);
+    setup = raidSetup(rival.homeLevel, rival.layout.defenses, rival.seed, loadoutOf(profile), seed, crewOf(profile).ship, rivalGarrison(rival.homeLevel));
     targetName = rival.name;
   } else {
     const defender = await loadProfile(ctx.store, targetId);
     if (!defender) throw new HttpError(404, 'There is no such island.');
     if (defender.protectedUntil > now) throw new HttpError(409, `${defender.name}'s island is protected for another ${Math.ceil((defender.protectedUntil - now) / 60_000)} minutes.`);
-    setup = raidSetup(defender.homeLevel, defender.defenses, hashSeed(defender.id), loadoutOf(profile), seed);
+    setup = raidSetup(defender.homeLevel, defender.defenses, hashSeed(defender.id), loadoutOf(profile), seed, crewOf(profile).ship, crewOf(defender).island);
     targetName = defender.name;
   }
   const battle: PendingBattle = { id, kind: 'raid', setup, puzzleSeed: 0, target: targetId, startedAt: now };

@@ -1,6 +1,8 @@
 import { CREW } from '../sim/balance';
 import type { BattleResult } from '../sim/battle';
+import { crewOf } from '../sim/base';
 import { useTrialBattle, type CrewSlot, type Profile } from '../sim/profile';
+import { subtractCounts } from '../sim/troops';
 
 /**
  * What every battle leaves behind: ghost crew members use up a battle, and when the ship sinks
@@ -24,5 +26,7 @@ export function afterBattle(profile: Profile, result: BattleResult | null, seed:
     }
     stats = { ...stats, timesSunk: stats.timesSunk + 1 };
   }
-  return { ...useTrialBattle(profile), crew, stats, sunk: profile.sunk || result.shipSunk };
+  // The troops that died are gone: the party's, and the garrison's in a siege. Never more than were there.
+  const troops = profile.troops && result.lost ? { ship: subtractCounts(crewOf(profile).ship, result.lost.ship), island: subtractCounts(crewOf(profile).island, result.lost.island) } : profile.troops;
+  return { ...useTrialBattle(profile), crew, stats, sunk: profile.sunk || result.shipSunk, ...(troops ? { troops } : {}) };
 }

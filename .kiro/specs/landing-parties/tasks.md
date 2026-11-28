@@ -1,0 +1,21 @@
+# Implementation Plan
+
+- [x] 1. Rules
+  - [x] 1.1 `TROOPS` numbers in `balance.ts`; troop types, counts and space in `sim/troops.ts`
+  - [x] 1.2 `fortWalls` in `sim/layout.ts`, shared with the renderer
+  - [x] 1.3 Troops in `createBattle` and `stepBattle`: landing, targets, walls and gate, healing, repair, boarders, towers firing at troops, losses in the result
+  - [x] 1.4 Support boats: steering, station, grapeshot
+  - _Requirements: 2, 3, 4, 5, 6.2, 6.3_
+  - [x]* 1.5 Properties 2 to 7 and the examples
+- [x] 2. Server
+  - [x] 2.1 Tavern routes: recruit, move, dismiss; boats at the shipwright; the starting crew
+  - [x] 2.2 Parties, garrisons, walls and boarders in capture, raid and siege setups; losses applied after battles
+  - _Requirements: 1, 6.1, 7.1, 7.2_
+  - [x]* 2.3 Properties 1 and 8
+- [x] 3. In the game
+  - [x] 3.1 Character models for all eleven troops, the gate, the landing boat and the support boats
+  - [x] 3.2 L to land, the party line in the battle HUD, troops lost on the result card, sounds
+  - [x] 3.3 The Tavern tab in the base panel
+  - [x] 3.4 A lineup scenario for the character art, and smoke checks
+  - _Requirements: 1, 2, 7.3_
+- [x] 4. Docs: game design, README, usage log

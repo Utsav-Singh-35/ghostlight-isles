@@ -1,11 +1,12 @@
-import { COSTS, ECONOMY, LAYOUT, type Cost } from './balance';
+import { COSTS, ECONOMY, LAYOUT, TROOPS, type Cost } from './balance';
 import { capsFor, describeCost, earn, spend } from './economy';
 import { TOWER_TYPES, type DefenseLevel, type DefenseType, type PlacedDefense } from './layout';
-import type { Profile, Weapons } from './profile';
+import type { Crew, Profile, Weapons } from './profile';
+import { LIVING_TROOPS, TROOP_NAMES, isLivingTroop, troopSpace, type LivingTroop, type TroopCounts } from './troops';
 
 export type CommandResult = { readonly ok: true; readonly profile: Profile } | { readonly ok: false; readonly reason: string };
 export type ShipPart = keyof Weapons;
-export const SHIP_PARTS: readonly ShipPart[] = ['hull', 'cannon', 'salt', 'barrel', 'bats', 'mortar'];
+export const SHIP_PARTS: readonly ShipPart[] = ['hull', 'cannon', 'salt', 'barrel', 'bats', 'mortar', 'boats'];
 export const DEFENSE_TYPES: readonly DefenseType[] = [...TOWER_TYPES, 'mine'];
 
 export const DEFENSE_NAMES: Readonly<Record<DefenseType, string>> = {
@@ -22,6 +23,7 @@ export const SHIP_PART_NAMES: Readonly<Record<ShipPart, string>> = {
   barrel: 'Witchfire Barrel',
   bats: 'Bat Swarm',
   mortar: 'Pumpkin Mortar',
+  boats: 'Support boats',
 };
 
 const fail = (reason: string): CommandResult => ({ ok: false, reason });
@@ -53,7 +55,7 @@ export function spentOn(type: DefenseType, level: number): Cost {
 export function shipUpgradeCost(profile: Pick<Profile, 'weapons'>, part: ShipPart): Cost | null {
   // Captains saved before a part existed don't have it yet: level 0.
   const current = profile.weapons[part] ?? 0;
-  if (current >= 3) return null;
+  if (current >= (part === 'boats' ? TROOPS.maxBoats : 3)) return null;
   return COSTS[part][current] ?? null;
 }
 
@@ -130,3 +132,66 @@ export function upgradeShip(profile: Profile, part: unknown): CommandResult {
   if (!resources) return fail(`You need ${describeCost(cost)}.`);
   return { ok: true, profile: { ...profile, resources, weapons: { ...profile.weapons, [p]: (profile.weapons[p] ?? 0) + 1 } } };
 }
+
+// ---- The Tavern: recruiting and posting troops ------------------------------------------
+
+export type Post = 'ship' | 'island';
+
+/** The captain's fighters (none for a captain saved before troops existed). */
+export function crewOf(profile: Pick<Profile, 'troops'>): Crew {
+  return profile.troops ?? { ship: {}, island: {} };
+}
+
+/** Room aboard (by hull level) and ashore (by home level). */
+export function spaceFor(profile: Pick<Profile, 'weapons' | 'homeLevel'>): { ship: number; island: number } {
+  const hull = Math.min(3, Math.max(1, Math.round(profile.weapons.hull))) - 1;
+  const home = Math.min(3, Math.max(1, Math.round(profile.homeLevel))) - 1;
+  return { ship: TROOPS.shipSpace[hull]!, island: TROOPS.islandSpace[home]! };
+}
+
+const validPost = (p: unknown): p is Post => p === 'ship' || p === 'island';
+
+function withCount(counts: TroopCounts, type: LivingTroop, delta: number): TroopCounts {
+  const n = (counts[type] ?? 0) + delta;
+  const out: TroopCounts = { ...counts };
+  if (n > 0) out[type] = n;
+  else delete out[type];
+  return out;
+}
+
+function roomLeft(profile: Profile, post: Post, crew: Crew): number {
+  return spaceFor(profile)[post] - troopSpace(crew[post]);
+}
+
+export function recruitTroop(profile: Profile, type: unknown, post: unknown): CommandResult {
+  if (!isLivingTroop(type)) return fail('Nobody of that kind drinks at this tavern.');
+  if (!validPost(post)) return fail('Post them aboard or ashore.');
+  const stats = TROOPS.types[type];
+  if (profile.homeLevel < stats.minHome) return fail(`An ${TROOP_NAMES[type]} needs Last Light at level ${stats.minHome}.`);
+  const crew = crewOf(profile);
+  if (roomLeft(profile, post, crew) < stats.space) return fail(post === 'ship' ? 'There is no room aboard. A bigger hull holds more.' : 'There is no room ashore. Upgrade Last Light for more.');
+  const resources = spend(profile.resources, stats.cost);
+  if (!resources) return fail(`You need ${describeCost(stats.cost)}.`);
+  return { ok: true, profile: { ...profile, resources, troops: { ...crew, [post]: withCount(crew[post], type, 1) } } };
+}
+
+export function moveTroop(profile: Profile, type: unknown, from: unknown): CommandResult {
+  if (!isLivingTroop(type)) return fail('There is nobody like that in your crew.');
+  if (!validPost(from)) return fail('Move them from aboard or ashore.');
+  const to: Post = from === 'ship' ? 'island' : 'ship';
+  const crew = crewOf(profile);
+  if ((crew[from][type] ?? 0) < 1) return fail(`You have no ${TROOP_NAMES[type]} ${from === 'ship' ? 'aboard' : 'ashore'}.`);
+  if (roomLeft(profile, to, crew) < TROOPS.types[type].space) return fail(to === 'ship' ? 'There is no room aboard.' : 'There is no room ashore.');
+  return { ok: true, profile: { ...profile, troops: { [from]: withCount(crew[from], type, -1), [to]: withCount(crew[to], type, 1) } as unknown as Crew } };
+}
+
+export function dismissTroop(profile: Profile, type: unknown, from: unknown): CommandResult {
+  if (!isLivingTroop(type)) return fail('There is nobody like that in your crew.');
+  if (!validPost(from)) return fail('Dismiss them from aboard or ashore.');
+  const crew = crewOf(profile);
+  if ((crew[from][type] ?? 0) < 1) return fail(`You have no ${TROOP_NAMES[type]} ${from === 'ship' ? 'aboard' : 'ashore'}.`);
+  return { ok: true, profile: { ...profile, troops: { ...crew, [from]: withCount(crew[from], type, -1) } } };
+}
+
+/** Every recruitable troop type, in Tavern order. */
+export const TAVERN: readonly LivingTroop[] = LIVING_TROOPS;

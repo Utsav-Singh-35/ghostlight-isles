@@ -1,4 +1,5 @@
 import { REWARDS, WORLD } from '../sim/balance';
+import { crewOf } from '../sim/base';
 import { runBattle } from '../sim/battle';
 import { capsFor, earn } from '../sim/economy';
 import { fortDifficulty, fortSetup } from '../sim/layout';
@@ -26,7 +27,7 @@ route('POST', '/captures/start', true, async ({ ctx, body, profile }) => {
   requireAfloat(profile);
   const island = STANDARD_WORLD.islands[islandId]!;
   const id = randomHex(ctx, 8);
-  const setup = fortSetup(island, loadoutOf(profile), ctx.random());
+  const setup = fortSetup(island, loadoutOf(profile), ctx.random(), crewOf(profile).ship);
   const battle: PendingBattle = { id, kind: 'capture', setup, puzzleSeed: 0, target: String(islandId), startedAt: ctx.now() };
   const next = { ...profile, battle };
   await saveProfile(ctx, next);

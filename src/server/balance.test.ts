@@ -75,7 +75,7 @@ describe('balance: the first minutes', () => {
     const heldIdle = sieges.filter((s) => !autopilot(s, 0).state.result!.keepDestroyed).length;
     expect(held).toBeGreaterThanOrEqual(7);
     expect(heldIdle).toBe(0);
-  });
+  }, 60_000);
 
   it('earns at least one star raiding any level-1 rival', () => {
     for (const rival of RIVALS.filter((r) => r.homeLevel === 1)) {

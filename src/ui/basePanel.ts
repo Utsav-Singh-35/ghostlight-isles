@@ -1,10 +1,11 @@
-import { BLOOD_MOON, COSTS, CREW, ECONOMY, WEAPONS, type Cost } from '../sim/balance';
+import { BLOOD_MOON, COSTS, CREW, ECONOMY, TROOPS, WEAPONS, type Cost } from '../sim/balance';
 import { fleetFor } from '../sim/bloodMoon';
 import { CREW_NAMES, CREW_ROLES, crewEffect, type CrewRole } from '../sim/crew';
-import { DEFENSE_NAMES, SHIP_PART_NAMES, SHIP_PARTS, defenseCost, homeUpgradeCost, shipUpgradeCost, slotsFor, spentOn, type ShipPart } from '../sim/base';
+import { DEFENSE_NAMES, SHIP_PART_NAMES, SHIP_PARTS, TAVERN, crewOf, defenseCost, homeUpgradeCost, shipUpgradeCost, slotsFor, spaceFor, spentOn, type Post, type ShipPart } from '../sim/base';
 import { canAfford, capsFor, describeCost } from '../sim/economy';
 import { TOWER_TYPES, type DefenseType, type PlacedDefense } from '../sim/layout';
 import type { PublicProfile } from '../sim/profile';
+import { TROOP_NAMES, troopSpace, type LivingTroop } from '../sim/troops';
 import { el } from './dom';
 
 export interface BasePanelHandlers {
@@ -16,6 +17,9 @@ export interface BasePanelHandlers {
   cleanse(): void;
   keepCrew(role: CrewRole): void;
   hireCrew(role: CrewRole): void;
+  recruit(type: LivingTroop, post: Post): void;
+  moveTroop(type: LivingTroop, from: Post): void;
+  dismissTroop(type: LivingTroop, from: Post): void;
   close(): void;
 }
 
@@ -42,6 +46,8 @@ function partDetail(part: ShipPart, level: number): string {
       return `Reveals ghosts and mines for ${WEAPONS.bats.revealSeconds[i]} s. Press B in battle.`;
     case 'mortar':
       return `Lobs a burning pumpkin ${WEAPONS.mortar.minRange} to ${WEAPONS.mortar.range} m: ${WEAPONS.mortar.damage[i]} damage across ${WEAPONS.mortar.splash[i]} m, every ${WEAPONS.mortar.cooldownSeconds} s. Press G in battle; it aims at your locked target.`;
+    case 'boats':
+      return `${level} gunboat${level === 1 ? '' : 's'} sail with you and fire grapeshot at troops on the beach (never at towers). With one afloat your party can land from ${TROOPS.boatLandReach} m out.`;
   }
 }
 
@@ -56,10 +62,20 @@ function shortfall(profile: PublicProfile, cost: Cost): string {
   return `Needs ${parts.join(' and ')}`;
 }
 
+/** What each troop is for, in a sentence. */
+const TROOP_ROLES: Readonly<Record<LivingTroop, string>> = {
+  deckhand: 'Patches the hull from aboard; ashore, mends damaged towers. Never fights.',
+  buccaneer: 'Cheap and quick; goes for whatever is nearest.',
+  shieldbearer: 'Slow and tough; every enemy close by has to fight it.',
+  archer: `Shoots troops first, from ${TROOPS.types.archer.range} m, even over walls.`,
+  powderMonkey: 'Runs at the gate (or a tower) and blows it, and himself, up.',
+  brute: 'Smashes towers, the gate and the keep; ignores troops.',
+  surgeon: 'Heals the most hurt ally near her. Never fights.',
+};
 /** Last Light's defenses and the shipwright, side by side with the island in view. */
 export class BasePanel {
   private readonly root: HTMLElement;
-  private tab: 'defenses' | 'ship' = 'defenses';
+  private tab: 'defenses' | 'ship' | 'tavern' = 'defenses';
   private profile: PublicProfile | null = null;
   private now = Date.now();
 
@@ -116,7 +132,7 @@ export class BasePanel {
 
     const tabs = el('div', 'bp-tabs');
     tabs.setAttribute('role', 'tablist');
-    for (const [id, label] of [['defenses', 'Defenses'], ['ship', 'Shipwright']] as const) {
+    for (const [id, label] of [['defenses', 'Defenses'], ['ship', 'Shipwright'], ['tavern', 'Tavern']] as const) {
       const t = el('button', `bp-tab${this.tab === id ? ' bp-tab-on' : ''}`, label);
       t.type = 'button';
       t.setAttribute('role', 'tab');
@@ -135,6 +151,8 @@ export class BasePanel {
       for (let slot = 0; slot < slots.towers; slot++) body.append(this.slotRow(profile, slot, false));
       body.append(el('h3', 'bp-section', 'Mines in the water'));
       for (let slot = 0; slot < slots.mines; slot++) body.append(this.slotRow(profile, slot, true));
+    } else if (this.tab === 'tavern') {
+      this.tavern(profile, body);
     } else {
       const trial = profile.trialBattles ?? 0;
     if (trial > 0) body.append(el('p', 'bp-note', `Your trial: every weapon sails with you at level 1 for ${trial} more ${trial === 1 ? 'battle' : 'battles'}. Refit a weapon here to keep it after that.`));
@@ -149,6 +167,34 @@ export class BasePanel {
     this.root.replaceChildren(head, tabs, body, close);
   }
 
+  /** The Tavern: who is aboard and ashore, and recruits for either. */
+  private tavern(profile: PublicProfile, body: HTMLElement): void {
+    const crew = crewOf(profile);
+    const space = spaceFor(profile);
+    const used = { ship: troopSpace(crew.ship), island: troopSpace(crew.island) };
+    body.append(
+      el('p', 'bp-note', `Aboard: ${used.ship} of ${space.ship} space (your landing party; press L near a shore in battle). Ashore: ${used.island} of ${space.island} space (Last Light's garrison against ghost boarders). A bigger hull and a higher Last Light hold more.`),
+    );
+    for (const type of TAVERN) {
+      const stats = TROOPS.types[type];
+      const row = el('div', 'bp-slot');
+      const counts = `${crew.ship[type] ?? 0} aboard, ${crew.island[type] ?? 0} ashore`;
+      row.append(el('div', 'bp-slot-name', `${TROOP_NAMES[type]}: ${counts}`), el('p', 'bp-role', `${TROOP_ROLES[type]} ${stats.hp} health, ${stats.space} space.`));
+      const locked = profile.homeLevel < stats.minHome ? `Needs Last Light at level ${stats.minHome}` : null;
+      for (const post of ['ship', 'island'] as const) {
+        const full = space[post] - used[post] < stats.space ? (post === 'ship' ? 'No room aboard' : 'No room ashore') : null;
+        const blocked = locked ?? full ?? (canAfford(profile.resources, stats.cost) ? null : shortfall(profile, stats.cost));
+        row.append(this.button(`Recruit ${post === 'ship' ? 'aboard' : 'ashore'}: ${describeCost(stats.cost)}`, '', blocked, () => this.handlers.recruit(type, post)));
+      }
+      for (const from of ['ship', 'island'] as const) {
+        if ((crew[from][type] ?? 0) < 1) continue;
+        const to = from === 'ship' ? 'island' : 'ship';
+        const full = space[to] - used[to] < stats.space ? 'No room there' : null;
+        row.append(this.button(from === 'ship' ? 'Send one ashore' : 'Take one aboard', '', full, () => this.handlers.moveTroop(type, from)));
+      }
+      body.append(row);
+    }
+  }
   private button(label: string, detail: string, blocked: string | null, run: () => void, className = ''): HTMLButtonElement {
     const b = el('button', `bp-action ${className}`.trim());
     b.type = 'button';

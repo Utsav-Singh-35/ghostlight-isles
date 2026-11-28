@@ -1654,3 +1654,15 @@ kbd {
 .sp-found {
   grid-column: 1 / -1;
 }
+
+/* The landing party's line in the battle HUD; warm when L will land them. */
+.bh-party {
+  color: rgba(227, 217, 194, 0.85);
+}
+.bh-party-ready {
+  color: var(--lantern);
+  font-weight: 600;
+}
+.bh-party[hidden] {
+  display: none;
+}

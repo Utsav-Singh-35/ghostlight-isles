@@ -8,7 +8,7 @@ const PORT = ['KeyA', 'ArrowLeft'];
 const STARBOARD = ['KeyD', 'ArrowRight'];
 const SAILING_KEYS = new Set([...RAISE, ...LOWER, ...PORT, ...STARBOARD]);
 /** Keys the game uses, so the browser doesn't scroll or switch focus on them. */
-const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'KeyG', 'KeyT', 'Space', 'Tab']);
+const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'KeyG', 'KeyT', 'KeyL', 'Space', 'Tab']);
 
 /** Keyboard state for sailing and battles, plus one-shot key handlers for menus. */
 export class Keyboard {
@@ -16,6 +16,8 @@ export class Keyboard {
   private readonly handlers = new Map<string, Array<() => void>>();
   private firstKey: (() => void) | null = null;
   private retreat = false;
+  /** A press of L, kept until the next battle tick so even a quick tap lands the party. */
+  private land = false;
   /** The sail order: 0 Furled, 1 Half sail, 2 Full sail. */
   sailLevel = 0;
   /** True while Salt Shot is loaded instead of cannonballs. */
@@ -38,6 +40,7 @@ export class Keyboard {
     if (!this.enabled) return;
     this.held.add(event.code);
     if (event.repeat) return;
+    if (event.code === 'KeyL') this.land = true;
     if (RAISE.includes(event.code)) this.sailLevel = Math.min(SHIP.maxSailLevel, this.sailLevel + 1);
     if (LOWER.includes(event.code)) this.sailLevel = Math.max(0, this.sailLevel - 1);
   };
@@ -93,7 +96,9 @@ export class Keyboard {
       if (this.held.has('KeyF')) flags |= FLAG.barrel;
       if (this.held.has('KeyB')) flags |= FLAG.bats;
       if (this.held.has('KeyG')) flags |= FLAG.mortar;
+      if (this.land || this.held.has('KeyL')) flags |= FLAG.land;
     }
+    this.land = false;
     if (this.salt) flags |= FLAG.salt;
     if (this.retreat) flags |= FLAG.retreat;
     this.retreat = false;

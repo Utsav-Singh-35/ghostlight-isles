@@ -18,6 +18,7 @@ import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
 import { SidePanel, ago, duration } from '../ui/sidePanel';
 import { fortToughness, starText } from '../sim/toughness';
+import { TROOP_NAMES, TROOP_TYPES, type TroopCounts } from '../sim/troops';
 import { LockerView } from '../ui/lockerView';
 import { CREW_NAMES } from '../sim/crew';
 import type { Resources } from '../sim/economy';
@@ -68,7 +69,9 @@ export interface BattleTicket {
 }
 
 /** The starting loadout, used for practice battles. */
-export const PRACTICE_LOADOUT: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 1, bats: 1, mortar: 1, gunner: 'living', navigator: 'living' };
+export const PRACTICE_LOADOUT: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 1, bats: 1, mortar: 1, gunner: 'living', navigator: 'living', boats: 1 };
+/** A practice landing party with one of every kind, so judges meet the whole crew. */
+export const PRACTICE_PARTY: TroopCounts = { buccaneer: 3, shieldbearer: 1, archer: 2, powderMonkey: 1, surgeon: 1, deckhand: 1 };
 
 const SIEGE_FAST_FORWARD = 4;
 /** A haunted island can be attacked once its shore is this close, metres. */
@@ -212,6 +215,9 @@ export class App {
       cleanse: () => command('/chapel/cleanse', {}, 'The chapel takes the cursed gold', 'coin'),
       keepCrew: (role) => command('/crew/keep', { role }, `Your ghost ${CREW_NAMES[role]} stays aboard`, 'lit'),
       hireCrew: (role) => command('/crew/hire', { role }, `A new ${CREW_NAMES[role]} signs on`, 'coin'),
+      recruit: (type, post) => command('/troops/recruit', { type, post }, `A ${TROOP_NAMES[type]} signs on ${post === 'ship' ? 'aboard' : 'ashore'}`, 'coin'),
+      moveTroop: (type, from) => command('/troops/move', { type, from }, `A ${TROOP_NAMES[type]} goes ${from === 'ship' ? 'ashore' : 'aboard'}`),
+      dismissTroop: (type, from) => command('/troops/dismiss', { type, from }, `A ${TROOP_NAMES[type]} leaves your crew`),
       close: () => this.toggleBase(false),
     });
     this.fleetNotice = createNotice(this.overlay, 'notice-fleet');
@@ -924,12 +930,13 @@ export class App {
       const ship = interpolateShip(this.previous.ship, this.current.ship, alpha);
       const home = this.world.islands[0]!;
       const base = this.basePanel.visible;
+      const lineup = this.renderer.lineupSpot;
       this.renderer.render({
         ship,
         time: this.time,
         dt: frameSeconds,
-        mode: this.mode === 'intro' ? 'intro' : base ? 'base' : 'chase',
-        ...(base ? { cameraTarget: { x: home.x + 20, z: home.z, heading: 0, speed: 0 } } : {}),
+        mode: this.mode === 'intro' ? 'intro' : base || lineup ? 'base' : 'chase',
+        ...(lineup ? { cameraTarget: { x: lineup.x, z: lineup.z, heading: 0, speed: 0 } } : base ? { cameraTarget: { x: home.x + 20, z: home.z, heading: 0, speed: 0 } } : {}),
         bloodMoon: this.bloodAmount,
       });
       this.watchMoon(frameSeconds);
@@ -1028,7 +1035,7 @@ export class App {
     if (fort) {
       const level = Number(fort[1] ?? 0);
       const island = this.world.islands.find((i) => i.kind === 'haunted' && fortDifficulty(i) === level) ?? this.world.islands[1]!;
-      const setup = fortSetup(island, PRACTICE_LOADOUT, hashSeed(`practice-${Math.floor(this.time * 1000)}`));
+      const setup = fortSetup(island, PRACTICE_LOADOUT, hashSeed(`practice-${Math.floor(this.time * 1000)}`), PRACTICE_PARTY);
       this.startBattle({
         title: `Practice: the level ${fortDifficulty(island)} fort on ${island.name}`,
         objective: fortObjective(setup),
@@ -1036,6 +1043,9 @@ export class App {
         fortLevel: fortDifficulty(island),
         finish: (result) => this.practiceResult(result, name),
       });
+    } else if (name === 'lineup') {
+      // Every character in a row on Last Light's beach, for looking at the art.
+      this.renderer.showLineup();
     } else if (name === 'practice-siege') {
       this.startBattle({
         title: 'Practice: the ghost fleet comes for Last Light',
@@ -1053,6 +1063,8 @@ export class App {
           loadout: PRACTICE_LOADOUT,
           fleet: { count: 3, level: 1 },
           timeLimitSeconds: 150,
+          garrison: { buccaneer: 3, archer: 1, deckhand: 1 },
+          boarders: 2,
         },
         finish: (result) => this.practiceResult(result, name),
       });
@@ -1093,6 +1105,10 @@ export class App {
           islandRadius: s.setup.island.radius,
           lock: this.keyboard.lock,
           bonusTargets: s.structures.filter((x) => x.type === 'vault' || x.type === 'powder').length,
+          troopsAshore: s.troops.filter((x) => x.side === 'player' && !x.dead).length,
+          landed: s.landing?.done === true,
+          defenders: s.troops.filter((x) => x.side === 'island' && !x.dead).length,
+          boats: s.boats.filter((b) => !b.sunk).length,
         };
       },
       resultShowing: () => this.results.visible,
@@ -1174,7 +1190,14 @@ export function battleLines(result: BattleResult, mode: BattleMode): string[] {
     if (result.reason === 'time') lines.push('Dawn came before the fort fell.');
   }
   lines.push(result.shipSunk ? 'Your ship sank.' : `Your hull: ${Math.ceil(result.hull)} of ${result.maxHull}`);
+  const lost = [...troopWords(result.lost?.ship ?? {}), ...troopWords(result.lost?.island ?? {})];
+  if (lost.length > 0) lines.push(`Crew lost: ${listInWords(lost)}. Recruit more at the Tavern.`);
   return lines;
+}
+
+/** "2 Cutlass Buccaneers", one entry per troop type. */
+export function troopWords(counts: TroopCounts): string[] {
+  return TROOP_TYPES.filter((t) => (counts[t] ?? 0) > 0).map((t) => `${counts[t]} ${TROOP_NAMES[t]}${counts[t] === 1 ? '' : 's'}`);
 }
 
 /**

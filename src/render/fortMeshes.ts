@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { FORTS } from '../sim/balance';
-import { slotPosition } from '../sim/layout';
+import { BASTION_REACH, fortWallRadius, fortWalls, type FortStyle } from '../sim/layout';
+
+export { fortStyle, fortWallRadius, type FortStyle } from '../sim/layout';
 import { TAU } from '../sim/math';
 import { createRng, type Rng } from '../sim/rng';
 import { MeshBuilder, placed, type Vec3 } from './meshBuilder';
@@ -15,9 +17,6 @@ const FLAG_BLACK = '#121214';
 
 /** Terrain height under a point given relative to the island's centre. */
 export type GroundAt = (x: number, z: number) => number;
-
-/** How a fort is built. Chosen from the island's seed, leaning to stone and star forts as the level rises. */
-export type FortStyle = 'curtain' | 'ruin' | 'star' | 'palisade';
 
 /** The stone a fort is built from. */
 interface Stone {
@@ -51,20 +50,6 @@ export function keepScale(keepLevel: number): number {
   return 1 + 0.15 * (Math.min(3, Math.max(1, Math.round(keepLevel))) - 1);
 }
 
-/** The curtain wall's distance from the keep, metres: between the keep and the ring of tower slots. */
-export function fortWallRadius(islandRadius: number): number {
-  return Math.min(21, Math.max(8.5, islandRadius * 0.34));
-}
-
-/** How far a star fort's bastions jut out, as a share of the wall's radius. */
-const BASTION_REACH = 1.3;
-
-/** The angle of tower slot 0, so a star fort's bastions can point at the slots. */
-const SLOT_START_ANGLE = (() => {
-  const p = slotPosition(1, 0, 1);
-  return Math.atan2(p.x, p.z);
-})();
-
 /** Radius of the keep's base at this fort level, before the keep is scaled. */
 function keepBaseRadius(level: number): number {
   return level >= 4 ? 4.8 : level === 3 ? 4.4 : 4.2;
@@ -79,14 +64,6 @@ export function blockedByFort(d: number, islandRadius: number, style: FortStyle 
   if (d < 8.5) return true;
   if (style === 'star') return d > wallR * 0.92 - 3.4 && d < wallR * BASTION_REACH + 2.5;
   return Math.abs(d - wallR) < 3.4;
-}
-
-/** The style a fort of this level and seed is built in: wooden stockades only on the easy forts, star forts mostly on the hard ones. */
-export function fortStyle(level: number, seed: number): FortStyle {
-  const roll = createRng(seed ^ 0x51e7).next();
-  if (level <= 2) return roll < 0.35 ? 'palisade' : roll < 0.65 ? 'ruin' : 'curtain';
-  if (level === 3) return roll < 0.3 ? 'ruin' : roll < 0.65 ? 'star' : 'curtain';
-  return roll < 0.2 ? 'ruin' : roll < 0.7 ? 'star' : 'curtain';
 }
 
 // ---- Keeps --------------------------------------------------------------------------------
@@ -171,32 +148,6 @@ export function hauntedKeepGeometry(level: number): { body: THREE.BufferGeometry
 }
 
 // ---- Walls ------------------------------------------------------------------------------
-
-/** One corner of the wall: where it stands and whether it carries a turret. */
-interface Corner {
-  readonly x: number;
-  readonly z: number;
-  readonly turret: boolean;
-}
-
-/** The wall's corners in order of rising angle, so every wall's outward side is the same side. */
-function corners(style: FortStyle, sides: number, wallR: number, start: number): Corner[] {
-  const out: Corner[] = [];
-  if (style === 'star') {
-    // Bastions: every other corner juts out into a point with a turret.
-    for (let k = 0; k < sides * 2; k++) {
-      const a = start + (k / (sides * 2)) * TAU;
-      const r = k % 2 === 0 ? wallR * BASTION_REACH : wallR * 0.92;
-      out.push({ x: Math.sin(a) * r, z: Math.cos(a) * r, turret: k % 2 === 0 });
-    }
-    return out;
-  }
-  for (let k = 0; k < sides; k++) {
-    const a = start + (k / sides) * TAU;
-    out.push({ x: Math.sin(a) * wallR, z: Math.cos(a) * wallR, turret: true });
-  }
-  return out;
-}
 
 /** Thin pole with a skull on top. */
 function skullPike(b: MeshBuilder, x: number, y: number, z: number, h: number, rng: Rng): void {
@@ -398,22 +349,19 @@ function addClutter(b: MeshBuilder, islandRadius: number, level: number, rng: Rn
  * flags, skull pikes, gibbets and braziers. Higher levels get more sides, taller walls and more
  * fire. `origin` moves the fort into place; returns where its flames burn, in the same coordinates.
  */
-export function addFort(b: MeshBuilder, islandRadius: number, level: number, seed: number, groundAt: GroundAt, origin: { readonly x: number; readonly z: number } = { x: 0, z: 0 }): FortLights {
+export function addFort(b: MeshBuilder, islandRadius: number, level: number, seed: number, groundAt: GroundAt, origin: { readonly x: number; readonly z: number } = { x: 0, z: 0 }, gateBars = true): FortLights {
   const rng = createRng(seed ^ 0x7a11);
-  const style = fortStyle(level, seed);
+  // The same corners and gate the battle rules use, so troops walk through the gate you see.
+  const walls = fortWalls(islandRadius, level, seed);
+  const style = walls.style;
   const stone = STONES[rng.int(0, STONES.length - 1)]!;
-  const wallR = fortWallRadius(islandRadius);
   const wallH = 2.2 + 0.45 * level;
   const thick = 0.9 + 0.1 * level;
   const turretR = 0.85 + 0.17 * level;
   const flames: Vec3[] = [];
   const at = (x: number, y: number, z: number): Vec3 => [x + origin.x, y, z + origin.z];
-  const turn = rng.range(0, TAU);
-  // A star fort points one bastion at each tower slot, so the treasure between the slots sits in
-  // the hollows of the star instead of under a bastion.
-  const slots = FORTS.slots[Math.min(FORTS.levels, Math.max(1, level)) - 1]!;
-  const ring = style === 'star' ? corners(style, slots, wallR, SLOT_START_ANGLE) : corners(style, 5 + level, wallR, turn);
-  const gate = rng.int(0, ring.length - 1);
+  const ring = walls.corners;
+  const gate = walls.gateIndex;
 
   ring.forEach((c0, k) => {
     const c1 = ring[(k + 1) % ring.length]!;
@@ -515,12 +463,15 @@ export function addFort(b: MeshBuilder, islandRadius: number, level: number, see
       stretch(-span / 2, -gap / 2, false);
       stretch(gap / 2, span / 2, false);
       b.add(new THREE.BoxGeometry(thick * 1.15, 1.0, gap + 0.8), stone.dark, placed(at(mx, top - 0.5, mz), [0, yaw, 0]));
-      const barHeight = top - base - 1.0;
-      for (let i = 0; i < 4; i++) {
-        const t = -gap / 2 + ((i + 0.5) / 4) * gap;
-        b.add(new THREE.BoxGeometry(0.12, barHeight, 0.12), IRON, placed(at(mx + ux * t, base + barHeight / 2, mz + uz * t), [0, yaw, 0]));
+      // In battle the portcullis is drawn on its own, so it can fall when the gate is broken.
+      if (gateBars) {
+        const barHeight = top - base - 1.0;
+        for (let i = 0; i < 4; i++) {
+          const t = -gap / 2 + ((i + 0.5) / 4) * gap;
+          b.add(new THREE.BoxGeometry(0.12, barHeight, 0.12), IRON, placed(at(mx + ux * t, base + barHeight / 2, mz + uz * t), [0, yaw, 0]));
+        }
+        b.add(new THREE.BoxGeometry(0.1, 0.12, gap), IRON, placed(at(mx, low + 1.6, mz), [0, yaw, 0]));
       }
-      b.add(new THREE.BoxGeometry(0.1, 0.12, gap), IRON, placed(at(mx, low + 1.6, mz), [0, yaw, 0]));
       // Ghost light burns in the gateway, behind the bars.
       for (let i = 0; i < 3; i++) flames.push(at(mx + ux * (i - 1) * gap * 0.3 - nx * 0.4, low + 0.6 + i * 0.5, mz + uz * (i - 1) * gap * 0.3 - nz * 0.4));
       // Skulls on pikes either side of the gate, and a torch on each side.

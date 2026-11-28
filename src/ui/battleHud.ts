@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { TICK_SECONDS, WEAPONS } from '../sim/balance';
-import { isRevealed, reloadTicks, revealRadius, secondsToTicks, timeLeft, type BattleState } from '../sim/battle';
+import { TICK_SECONDS, TROOPS, WEAPONS } from '../sim/balance';
+import { canLand, isRevealed, reloadTicks, revealRadius, secondsToTicks, timeLeft, type BattleState } from '../sim/battle';
+import { troopTotal } from '../sim/troops';
 import { DEFENSE_NAMES } from '../sim/base';
 import type { BattleLayer } from '../render/battleLayer';
 import { el, setText } from './dom';
@@ -66,6 +67,7 @@ export class BattleHud {
   private readonly bats: Meter;
   private readonly mortar: Meter;
   private readonly target: HTMLElement;
+  private readonly party: HTMLElement;
   private readonly retreat: HTMLButtonElement;
   private readonly tip: HTMLElement;
   private readonly bars: Array<{ hit: HTMLButtonElement; root: HTMLElement; fill: HTMLElement }> = [];
@@ -103,8 +105,9 @@ export class BattleHud {
     this.mortar = meter(weapons, 'G', 'Mortar');
     this.ammo = el('div', 'bh-ammo');
     this.target = el('div', 'bh-target');
+    this.party = el('div', 'bh-party');
     const lines = el('div', 'bh-lines');
-    lines.append(this.ammo, this.target);
+    lines.append(this.ammo, this.target, this.party);
     panel.append(hull, weapons, lines);
 
     this.tip = el('div', 'bh-tip');
@@ -190,6 +193,10 @@ export class BattleHud {
     } else setText(this.target, 'T: lock a target, or click its health bar. Unlocked guns fire at the nearest.');
     this.target.classList.toggle('bh-target-on', locked !== null);
 
+    setText(this.party, partyLine(state));
+    this.party.classList.toggle('bh-party-ready', canLand(state));
+    this.party.hidden = this.party.textContent === '';
+
     const saltLoaded = salt && loadout.salt > 0;
     setText(this.ammo, loadout.salt ? `R: ${saltLoaded ? 'Salt Shot loaded (strong against ghosts)' : 'Cannonballs loaded (strong against towers)'}` : 'Cannonballs loaded');
     this.ammo.classList.toggle('bh-ammo-salt', saltLoaded);
@@ -230,4 +237,27 @@ export class BattleHud {
     });
     for (let i = n; i < this.bars.length; i++) this.bars[i]!.hit.hidden = true;
   }
+}
+
+/** The landing party in words: who is aboard, whether L will land them, and how the fight ashore goes. */
+export function partyLine(state: BattleState): string {
+  const mine = state.troops.filter((t) => t.side === 'player');
+  const ashore = mine.filter((t) => !t.dead).length;
+  const fallen = mine.length - ashore;
+  const aboard = troopTotal(state.aboard) - (state.aboard.deckhand ?? 0);
+  const hands = state.aboard.deckhand ?? 0;
+  const repairs = hands > 0 ? ` ${hands} Deckhand${hands === 1 ? '' : 's'} patch the hull.` : '';
+  if (state.setup.mode !== 'assault') {
+    const garrison = state.troops.filter((t) => t.side === 'island' && !t.dead).length;
+    const boarders = state.troops.filter((t) => t.side === 'ghost' && !t.dead).length;
+    return garrison + boarders > 0 ? `Ashore: ${garrison} of your crew against ${boarders} ghost boarders.${repairs}` : repairs.trim();
+  }
+  const enemies = state.troops.filter((t) => t.side === 'island' && !t.dead).length;
+  const gate = state.gate ? (state.gate.destroyed ? ' The gate is open.' : ` Gate ${Math.ceil(state.gate.hp)} / ${state.gate.maxHp}.`) : '';
+  if (state.landing?.done) return `Ashore: ${ashore}${fallen ? `, ${fallen} fallen` : ''}. ${enemies} defenders left.${gate}${repairs}`;
+  if (state.landing) return `Your party is rowing ashore.${repairs}`;
+  if (aboard === 0) return repairs.trim();
+  if (canLand(state)) return `L: land your party of ${aboard}.${gate}${repairs}`;
+  const reach = state.boats.some((b) => !b.sunk) ? TROOPS.boatLandReach : TROOPS.landReach;
+  return `Party of ${aboard} aboard: sail within ${reach} m of the shore, then press L.${repairs}`;
 }

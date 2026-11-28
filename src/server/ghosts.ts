@@ -1,5 +1,5 @@
-import { BATTLE, BLOOD_MOON, REWARDS } from '../sim/balance';
-import { slotsFor } from '../sim/base';
+import { BATTLE, BLOOD_MOON, REWARDS, TROOPS } from '../sim/balance';
+import { crewOf, slotsFor } from '../sim/base';
 import { runBattle, type BattleSetup } from '../sim/battle';
 import { fleetCanSail, fleetFor, moonIsUp } from '../sim/bloodMoon';
 import { capsFor, earn, takeShare } from '../sim/economy';
@@ -21,6 +21,9 @@ export function siegeSetup(profile: Profile, seed: number): BattleSetup {
     loadout: loadoutOf(profile),
     fleet: fleetFor(profile),
     timeLimitSeconds: BATTLE.timeLimitSeconds,
+    party: crewOf(profile).ship,
+    garrison: crewOf(profile).island,
+    boarders: TROOPS.boarders[fleetFor(profile).level - 1] ?? 1,
   };
 }
 

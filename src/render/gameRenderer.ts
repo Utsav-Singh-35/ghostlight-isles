@@ -12,6 +12,7 @@ import { PALETTE } from './palette';
 import { createShipModel, type ShipModel } from './shipMesh';
 import { createSky, type Sky } from './sky';
 import { StructureSet, fortDefenseViews, type StructureView } from './structureMeshes';
+import { TroopSet } from './troopMeshes';
 import { sampleWaveHeight } from './waves';
 
 export type Quality = 'high' | 'low';
@@ -69,6 +70,7 @@ export class GameRenderer {
   private readonly ocean: Ocean;
   private readonly sky: Sky;
   private readonly islands: IslandScene;
+  private readonly worldIslands: World['islands'];
   private readonly homeDefenses = new StructureSet(24);
   /** The haunted forts' towers, vaults and powder stores. Captured forts show theirs as rubble. */
   private readonly fortDefenses: StructureSet;
@@ -94,6 +96,8 @@ export class GameRenderer {
   private readonly tmp = new THREE.Vector3();
   private readonly projected = new THREE.Vector3();
   private readonly shores: Shore[] = [];
+  /** Every character in a row, for the lineup scene; null otherwise. */
+  private lineup: { set: TroopSet; x: number; z: number; heading: number } | null = null;
   private readonly lanternColor = new THREE.Color(PALETTE.lantern);
   private readonly spectralColor = new THREE.Color(PALETTE.spectral);
   private readonly night = {
@@ -148,6 +152,7 @@ export class GameRenderer {
     this.ocean = createOcean(high ? 4 : 8, MOON_DIRECTION, quality);
     this.scene.add(this.ocean.mesh);
 
+    this.worldIslands = world.islands;
     this.islands = createIslands(world);
     this.islands.group.add(this.homeDefenses.group);
     // Every fort shows the towers and treasure it will fight with, so a captain can size it up from the sea.
@@ -224,6 +229,21 @@ export class GameRenderer {
 
   get inBattle(): boolean {
     return this.battle !== null;
+  }
+
+  /** Lines up every character on Last Light's beach, facing the sea. */
+  showLineup(): void {
+    if (this.lineup) return;
+    const home = this.worldIslands[0]!;
+    const set = new TroopSet(1);
+    this.scene.add(set.group);
+    // On the beach on the dock's side, facing out to sea.
+    this.lineup = { set, x: home.x, z: home.z + home.radius * 0.7, heading: 0 };
+  }
+
+  /** Where the lineup stands, while it is shown. */
+  get lineupSpot(): { x: number; z: number } | null {
+    return this.lineup;
   }
 
   /** Draws the player's defenses on Last Light. */
@@ -341,6 +361,10 @@ export class GameRenderer {
       this.shores.sort((a, b) => Math.hypot(a.x - camera.x, a.z - camera.z) - Math.hypot(b.x - camera.x, b.z - camera.z));
     }
     this.ocean.setShores(this.shores);
+    if (this.lineup) {
+      const { set, x, z, heading } = this.lineup;
+      set.lineup(x, z, heading, (px, pz) => this.islands.groundAt(this.worldIslands[0]!.id, px, pz), time);
+    }
 
     this.renderer.render(this.scene, this.rig.camera);
   }
@@ -411,6 +435,7 @@ export class GameRenderer {
     this.islands.dispose();
     this.homeDefenses.dispose();
     this.fortDefenses.dispose();
+    this.lineup?.set.dispose();
     this.ship.dispose();
     this.glows.dispose();
     this.wisps.dispose();

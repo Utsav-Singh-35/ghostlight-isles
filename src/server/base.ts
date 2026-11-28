@@ -1,4 +1,4 @@
-import { buildDefense, removeDefense, upgradeDefense, upgradeHome, upgradeShip, type CommandResult } from '../sim/base';
+import { buildDefense, dismissTroop, moveTroop, recruitTroop, removeDefense, upgradeDefense, upgradeHome, upgradeShip, type CommandResult } from '../sim/base';
 import { publicProfile, type Profile } from '../sim/profile';
 import { saveProfile } from './players';
 import { HttpError, route, type ServerContext } from './router';
@@ -18,3 +18,8 @@ route('POST', '/base/upgrade', true, async ({ ctx, body, profile }) => commit(ct
 route('POST', '/base/remove', true, async ({ ctx, body, profile }) => commit(ctx, removeDefense(profile, body.type, slotOf(body))));
 route('POST', '/base/home', true, async ({ ctx, profile }) => commit(ctx, upgradeHome(profile)));
 route('POST', '/ship/upgrade', true, async ({ ctx, body, profile }) => commit(ctx, upgradeShip(profile, body.part)));
+
+// The Tavern.
+route('POST', '/troops/recruit', true, async ({ ctx, body, profile }) => commit(ctx, recruitTroop(profile, body.type, body.post)));
+route('POST', '/troops/move', true, async ({ ctx, body, profile }) => commit(ctx, moveTroop(profile, body.type, body.from)));
+route('POST', '/troops/dismiss', true, async ({ ctx, body, profile }) => commit(ctx, dismissTroop(profile, body.type, body.from)));

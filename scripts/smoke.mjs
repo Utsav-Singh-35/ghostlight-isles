@@ -237,6 +237,13 @@ async function main() {
     await basePage.getByRole('tab', { name: 'Shipwright' }).click().catch(() => {});
     await sleep(200);
     check(await basePage.locator('.base-panel').textContent().then((t) => /Pumpkin Mortar/.test(t ?? '')), 'the shipwright offers the Pumpkin Mortar');
+    await basePage.getByRole('tab', { name: 'Tavern' }).click().catch(() => {});
+    await sleep(200);
+    const tavern = (await basePage.locator('.base-panel').textContent()) ?? '';
+    check(/Cutlass Buccaneer: 3 aboard, 2 ashore/.test(tavern) && /Ship's Surgeon/.test(tavern), 'the Tavern shows the starting crew aboard and ashore');
+    await basePage.locator('.bp-slot', { hasText: 'Lantern Archer' }).getByRole('button', { name: /Recruit ashore/ }).click();
+    await basePage.waitForFunction(() => /Lantern Archer: 1 aboard, 1 ashore/.test(document.querySelector('.base-panel')?.textContent ?? ''), null, { timeout: 10000 }).catch(() => {});
+    check(/Lantern Archer: 1 aboard, 1 ashore/.test((await basePage.locator('.base-panel').textContent()) ?? ''), 'recruiting at the Tavern posts an Archer ashore');
     await basePage.keyboard.press('Tab');
     check(!(await basePage.locator('.base-panel').isVisible()), 'Tab closes the base panel again');
     await basePage.close();
@@ -370,7 +377,9 @@ async function main() {
     const fort = await openGame(browser, base, '?seed=smoke-test&scenario=practice-fort', errors);
     check((await fort.evaluate(() => window.__ghostlight.mode)) === 'battle', 'the fort scenario opens a battle');
     await fort.keyboard.press('KeyW');
+    await fort.keyboard.down('KeyL');
     await sleep(9000);
+    await fort.keyboard.up('KeyL');
     await fort.keyboard.press('KeyT');
     await sleep(200);
     const locked = await fort.evaluate(() => window.__ghostlight.battle()?.lock ?? 0);
@@ -387,6 +396,7 @@ async function main() {
     await fort.keyboard.up('KeyE');
     await fort.keyboard.up('KeyA');
     check(fortBattle && fortBattle.tick > 400, `the fort battle runs (${fortBattle?.tick} ticks)`);
+    check(fortBattle && fortBattle.landed && fortBattle.boats === 1, `L lands the party near the shore, with a gunboat in support (${fortBattle?.troopsAshore} ashore against ${fortBattle?.defenders} defenders)`);
     check(fortBattle && fortBattle.shotsFired >= 2, `the player's inputs are recorded for replay (${fortBattle?.shotsFired} changes)`);
     check(fortStats.drawCalls <= BUDGET.drawCalls, `Fort battle: ${fortStats.drawCalls} draw calls (budget ${BUDGET.drawCalls})`);
     const heard = await fort.evaluate(() => window.__ghostlight.sound());
@@ -410,6 +420,14 @@ async function main() {
     check(siegeBattle && siegeBattle.mode === 'siege' && siegeBattle.tick > 300, 'the siege scenario runs');
     check(siegeStats.drawCalls <= BUDGET.drawCalls, `Siege: ${siegeStats.drawCalls} draw calls (budget ${BUDGET.drawCalls})`);
     await siege.close();
+
+    // Every character in a row, for the art.
+    const crew = await openGame(browser, base, '?scenario=lineup', errors);
+    await sleep(3500);
+    await crew.screenshot({ path: join(SHOTS, '18-crew-lineup.png') });
+    const crewStats = await crew.evaluate(() => window.__ghostlight.stats());
+    check(crewStats.drawCalls <= BUDGET.drawCalls, `the crew lineup draws within budget (${crewStats.drawCalls} draw calls)`);
+    await crew.close();
 
     check(errors.length === 0, `no console errors${errors.length ? `: ${errors.slice(0, 5).join(' | ')}` : ''}`);
   } finally {

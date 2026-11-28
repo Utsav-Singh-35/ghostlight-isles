@@ -31,7 +31,21 @@ import {
 import { TAU, angleDelta, clamp, finiteOr, wrapAngle } from './math';
 import { createRng, type Rng } from './rng';
 import { stepShip, type ShipInput, type ShipState } from './ship';
+import {
+  cleanCounts,
+  hostile as hostileTroop,
+  spawnGroup,
+  stepTroops,
+  troopTotal,
+  type Gate,
+  type Troop,
+  type TroopCounts,
+  type TroopEvent,
+  type TroopSide,
+  type TroopType,
+} from './troops';
 import { collisionRadius, resolveCollisions, type World } from './world';
+import { SUPPORT_BOAT, TROOPS } from './balance';
 
 export type BattleMode = 'assault' | 'siege';
 export type CrewState = 'none' | 'living' | 'ghost';
@@ -50,6 +64,16 @@ export interface Loadout {
   readonly mortar: number;
   readonly gunner: CrewState;
   readonly navigator: CrewState;
+  /** Support boats that sail with the ship, 0 to TROOPS.maxBoats. Missing on older setups. */
+  readonly boats?: number;
+}
+
+/** A haunted fort's wall ring and gate, from `fortWalls`. */
+export interface BattleWalls {
+  readonly radius: number;
+  readonly gateX: number;
+  readonly gateZ: number;
+  readonly gateHp: number;
 }
 
 export interface BattleIsland {
@@ -73,11 +97,19 @@ export interface BattleSetup {
   readonly timeLimitSeconds: number;
   /** A haunted fort's treasure vaults and powder stores. */
   readonly extras?: readonly PlacedExtra[];
+  /** The attacker's landing party, aboard until landed. Living troops only. */
+  readonly party?: TroopCounts;
+  /** The island's troops: a fort's ghosts, a raided captain's crew ashore, or your own in a siege. */
+  readonly garrison?: TroopCounts;
+  /** A haunted fort's wall ring and gate. */
+  readonly walls?: BattleWalls;
+  /** Ghost troops each ghost ship lands in a siege. */
+  readonly boarders?: number;
 }
 
 /** Input flag bits. */
-export const FLAG = { port: 1, starboard: 2, barrel: 4, bats: 8, salt: 16, retreat: 32, mortar: 64 } as const;
-const ALL_FLAGS = 127;
+export const FLAG = { port: 1, starboard: 2, barrel: 4, bats: 8, salt: 16, retreat: 32, mortar: 64, land: 128 } as const;
+const ALL_FLAGS = 255;
 /** Highest structure or ship id a lock can name. */
 const MAX_TARGET_ID = 1000;
 
@@ -159,7 +191,9 @@ export type BattleEvent =
   | { readonly type: 'fire'; readonly kind: ShotType; readonly side: Side; readonly x: number; readonly z: number; readonly sourceId: number; readonly targetId: number | null }
   | { readonly type: 'land'; readonly kind: ShotType; readonly x: number; readonly z: number; readonly hitId: number | null; readonly splash: number }
   | { readonly type: 'destroyed'; readonly id: number; readonly structure: DefenseType | 'keep' | BonusType; readonly x: number; readonly z: number }
-  | { readonly type: 'sunk'; readonly id: number; readonly kind: 'player' | 'ghost'; readonly x: number; readonly z: number }
+  | { readonly type: 'sunk'; readonly id: number; readonly kind: 'player' | 'ghost' | 'boat'; readonly x: number; readonly z: number }
+  | { readonly type: 'grapeshot'; readonly id: number; readonly x: number; readonly z: number; readonly toX: number; readonly toZ: number }
+  | TroopEvent
   | { readonly type: 'mine'; readonly id: number; readonly x: number; readonly z: number }
   | { readonly type: 'powder'; readonly id: number; readonly x: number; readonly z: number }
   | { readonly type: 'bats' };
@@ -178,6 +212,27 @@ export interface BattleResult {
   readonly ghostsTotal: number;
   readonly hull: number;
   readonly maxHull: number;
+  /** The captain's troops that died: from the party, and from the garrison when it is theirs (sieges). */
+  readonly lost?: { readonly ship: TroopCounts; readonly island: TroopCounts };
+}
+
+/** A support boat. */
+export interface SupportBoat {
+  readonly id: number;
+  readonly ship: ShipState;
+  readonly hp: number;
+  readonly maxHp: number;
+  readonly cooldown: number;
+  readonly sunk: boolean;
+}
+
+/** The landing: where and when the party comes ashore. */
+export interface Landing {
+  readonly tick: number;
+  readonly x: number;
+  readonly z: number;
+  /** True once the party is ashore. */
+  readonly done: boolean;
 }
 
 export interface BattleState {
@@ -202,6 +257,18 @@ export interface BattleState {
   /** What happened during the last tick, for effects and sound. */
   readonly events: readonly BattleEvent[];
   readonly result: BattleResult | null;
+  /** Every troop in the battle, living or fallen. */
+  readonly troops: readonly Troop[];
+  /** The party still aboard. Deckhands never leave the ship. */
+  readonly aboard: TroopCounts;
+  readonly landing: Landing | null;
+  readonly gate: Gate | null;
+  readonly wallRadius: number;
+  readonly boats: readonly SupportBoat[];
+  /** Ghost ships that have landed their boarders. */
+  readonly boarded: readonly number[];
+  /** Random number state for troop spawns, kept apart from the ships'. */
+  readonly troopRng: number;
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -217,6 +284,34 @@ export function secondsToTicks(seconds: number): number {
 const weaponLevel = (n: number): number => clamp(Math.round(finiteOr(n, 0)), 0, 3);
 const crewState = (c: unknown): CrewState => (c === 'living' || c === 'ghost' ? c : 'none');
 const at = <T>(list: readonly T[], level: number): T => list[clamp(level, 1, list.length) - 1] as T;
+
+/** The troop parts of a setup, cleaned. Fields a setup leaves out stay out, so older setups play as before. */
+function troopFields(raw: BattleSetup): Pick<BattleSetup, 'party' | 'garrison' | 'walls' | 'boarders'> {
+  const out: { party?: TroopCounts; garrison?: TroopCounts; walls?: BattleWalls; boarders?: number } = {};
+  const living = raw.island.living === true;
+  const radius = clamp(finiteOr(raw.island.radius, 40), 15, 80);
+  if (raw.party !== undefined) out.party = cleanCounts(raw.party, false);
+  // Haunted islands are held by ghosts; living ones by living crews.
+  if (raw.garrison !== undefined) out.garrison = cleanCounts(raw.garrison, !living, TROOPS.maxTroops - troopTotal(out.party ?? {}));
+  if (raw.walls && !living && raw.mode !== 'siege') {
+    const w = raw.walls;
+    const wallRadius = clamp(finiteOr(w.radius, 0), 4, radius * 0.6);
+    let gx = finiteOr(w.gateX, 0);
+    let gz = finiteOr(w.gateZ, wallRadius);
+    const d = Math.hypot(gx, gz);
+    // The gate sits on the wall ring, whatever was asked.
+    if (d < 1e-6) {
+      gx = 0;
+      gz = wallRadius;
+    } else if (Math.abs(d - wallRadius) > 1e-9) {
+      gx = (gx / d) * wallRadius;
+      gz = (gz / d) * wallRadius;
+    }
+    out.walls = { radius: wallRadius, gateX: gx, gateZ: gz, gateHp: clamp(finiteOr(w.gateHp, 300), 1, 5000) };
+  }
+  if (raw.boarders !== undefined && raw.mode === 'siege') out.boarders = clamp(Math.round(finiteOr(raw.boarders, 0)), 0, 6);
+  return out;
+}
 
 /** Clamps every number in a setup into range, so any setup is safe to run. */
 export function sanitizeSetup(raw: BattleSetup): BattleSetup {
@@ -244,7 +339,9 @@ export function sanitizeSetup(raw: BattleSetup): BattleSetup {
       mortar: weaponLevel(raw.loadout.mortar),
       gunner: crewState(raw.loadout.gunner),
       navigator: crewState(raw.loadout.navigator),
+      ...(raw.loadout.boats !== undefined ? { boats: clamp(Math.round(finiteOr(raw.loadout.boats, 0)), 0, TROOPS.maxBoats) } : {}),
     },
+    ...troopFields(raw),
     fleet: {
       count: clamp(Math.round(finiteOr(raw.fleet.count, 0)), 0, GHOSTS.maxFleet),
       level: clamp(Math.round(finiteOr(raw.fleet.level, 1)), 1, GHOSTS.maxLevel),
@@ -404,6 +501,45 @@ export function createBattle(rawSetup: BattleSetup): BattleState {
     }
   }
 
+  // Troops draw on their own random stream, so a garrison never changes the ships' battle.
+  const troopRng = createRng(setup.seed ^ 0x7f00d);
+  const beach = beachRadius(island.radius);
+  const troops: Troop[] = [];
+  const garrison = setup.garrison ?? {};
+  const posted = troopTotal(garrison);
+  if (posted > 0) {
+    // Defenders stand guard in a ring round the keep: inside the walls on a fort.
+    const walls = setup.walls;
+    const ringR = walls ? (TROOPS.keepRadius + walls.radius) / 2 + 0.5 : Math.min(beach - 2, TROOPS.keepRadius + 6);
+    const offset = troopRng.range(0, TAU);
+    let k = 0;
+    for (const type of Object.keys(garrison) as TroopType[]) {
+      for (let i = 0; i < (garrison[type] ?? 0); i++) {
+        const a = offset + (k++ / posted) * TAU;
+        const group = spawnGroup({ [type]: 1 }, 'island', Math.sin(a) * ringR, Math.cos(a) * ringR, 0.6, nextId++, troopRng, beach);
+        troops.push(...group);
+      }
+    }
+  }
+  const gate: Gate | null = setup.walls ? { x: setup.walls.gateX, z: setup.walls.gateZ, hp: setup.walls.gateHp, maxHp: setup.walls.gateHp, destroyed: false } : null;
+
+  // Support boats start behind the ship, one on each quarter.
+  const boats: SupportBoat[] = [];
+  for (let b = 0; b < (loadout.boats ?? 0); b++) {
+    const side = b % 2 === 0 ? 1 : -1;
+    const back = 12 + 4 * Math.floor(b / 2);
+    const fx = Math.sin(ship.heading);
+    const fz = Math.cos(ship.heading);
+    boats.push({
+      id: nextId++,
+      ship: { ...ship, x: ship.x - fx * back + Math.cos(ship.heading) * side * 7, z: ship.z - fz * back - Math.sin(ship.heading) * side * 7 },
+      hp: TROOPS.boatHp,
+      maxHp: TROOPS.boatHp,
+      cooldown: 0,
+      sunk: false,
+    });
+  }
+
   return {
     tick: 0,
     limit: secondsToTicks(setup.timeLimitSeconds),
@@ -422,7 +558,45 @@ export function createBattle(rawSetup: BattleSetup): BattleState {
     nextId,
     events: [],
     result: null,
+    troops,
+    aboard: setup.party ?? {},
+    landing: null,
+    gate,
+    wallRadius: setup.walls?.radius ?? 0,
+    boats,
+    boarded: [],
+    troopRng: troopRng.state(),
   };
+}
+
+/** How far inland troops may stand on an island of this radius. */
+export function beachRadius(islandRadius: number): number {
+  return islandRadius * TROOPS.beach;
+}
+
+/** True when the ship is close enough to the shore to land the party (farther with a support boat afloat). */
+export function canLand(state: BattleState): boolean {
+  if (state.landing || state.player.sunk || state.setup.mode !== 'assault') return false;
+  if (troopTotal(withoutDeckhands(state.aboard)) === 0) return false;
+  const reach = state.boats.some((b) => !b.sunk) ? TROOPS.boatLandReach : TROOPS.landReach;
+  const s = state.player.ship;
+  return Math.hypot(s.x, s.z) - collisionRadius(state.arena.islands[0]!) <= reach;
+}
+
+function withoutDeckhands(counts: TroopCounts): TroopCounts {
+  const { deckhand: _stay, ...rest } = counts;
+  void _stay;
+  return rest;
+}
+
+/** Steers a support boat to a point, slowing as it arrives. */
+function boatSteer(boat: SupportBoat, x: number, z: number): ShipInput {
+  const s = boat.ship;
+  const dx = x - s.x;
+  const dz = z - s.z;
+  const d = Math.hypot(dx, dz);
+  const desired = Math.atan2(dx, dz);
+  return { rudder: clamp(-angleDelta(s.heading, desired) * 2.5, -1, 1), sailLevel: d > 14 ? 2 : d > 4 ? 1 : 0 };
 }
 
 /** Steers a ghost onto a ring around the island, circling one way. */
@@ -483,6 +657,28 @@ function shipTarget(c: Combatant): Target {
     radius: BATTLE.shipHitRadius,
     reach: 0,
   };
+}
+
+function boatTarget(b: SupportBoat): Target {
+  const s = b.ship;
+  return { id: b.id, cls: 'living', x: s.x, z: s.z, vx: Math.sin(s.heading) * s.speed, vz: Math.cos(s.heading) * s.speed, radius: SUPPORT_BOAT.radius + 0.5, reach: 0 };
+}
+
+function troopTarget(t: Troop): Target {
+  const ghostly = t.type === 'rattler' || t.type === 'grabber' || t.type === 'wraithArcher' || t.type === 'bosun';
+  return { id: t.id, cls: ghostly ? 'ghost' : 'living', x: t.x, z: t.z, vx: 0, vz: 0, radius: TROOPS.hitRadius, reach: 0 };
+}
+
+/** At most `room` troops from some counts, taking types in a fixed order. */
+function capCounts(counts: TroopCounts, room: number): TroopCounts {
+  const out: TroopCounts = {};
+  let left = room;
+  for (const type of Object.keys(counts).sort() as TroopType[]) {
+    const n = Math.min(left, counts[type] ?? 0);
+    if (n > 0) out[type] = n;
+    left -= n;
+  }
+  return out;
 }
 
 function structureTarget(s: Structure): Target {
@@ -547,18 +743,107 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
     g.ship = resolveCollisions(arena, stepShip(g.ship, steer, TICK_SECONDS, stats));
   }
 
+  // 1b. The party lands, boarders come ashore, troops fight, and support boats keep station.
+  let nextId = state.nextId;
+  const siege = !assault;
+  const shore = collisionRadius(arena.islands[0]!);
+  const beach = beachRadius(setup.island.radius);
+  const troopRng = createRng(state.troopRng);
+  const troops: Array<Mutable<Troop>> = state.troops.map((t) => ({ ...t }));
+  const gate: Mutable<Gate> | null = state.gate ? { ...state.gate } : null;
+  const boats: Array<Mutable<SupportBoat>> = state.boats.map((b) => ({ ...b }));
+  const boarded = state.boarded.slice();
+  let aboard = state.aboard;
+  let landing = state.landing;
+  const room = () => Math.max(0, TROOPS.maxTroops - troops.length);
+
+  if (input.flags & FLAG.land && canLand(state)) {
+    const s = state.player.ship;
+    const d = Math.max(1e-6, Math.hypot(s.x, s.z));
+    landing = { tick: tick + secondsToTicks(TROOPS.rowSeconds), x: (s.x / d) * beach * 0.95, z: (s.z / d) * beach * 0.95, done: false };
+  }
+  if (landing && !landing.done && tick >= landing.tick) {
+    const party = capCounts(withoutDeckhands(aboard), room());
+    const group = spawnGroup(party, 'player', landing.x, landing.z, 3, nextId, troopRng, beach);
+    nextId += group.length;
+    troops.push(...group);
+    aboard = aboard.deckhand ? { deckhand: aboard.deckhand } : {};
+    landing = { ...landing, done: true };
+    events.push({ type: 'landed', x: landing.x, z: landing.z, count: group.length });
+  }
+  // Each ghost ship lands its boarders once, on the shore nearest it.
+  if (siege && (setup.boarders ?? 0) > 0) {
+    for (const g of ghosts) {
+      if (g.sunk || boarded.includes(g.id) || Math.hypot(g.ship.x, g.ship.z) > ring + 6) continue;
+      boarded.push(g.id);
+      const n = Math.min(room(), setup.boarders ?? 0);
+      if (n === 0) continue;
+      const d = Math.max(1e-6, Math.hypot(g.ship.x, g.ship.z));
+      const x = (g.ship.x / d) * beach * 0.95;
+      const z = (g.ship.z / d) * beach * 0.95;
+      const group = spawnGroup({ rattler: n }, 'ghost', x, z, 2, nextId, troopRng, beach);
+      nextId += group.length;
+      troops.push(...group);
+      events.push({ type: 'landed', x, z, count: group.length });
+    }
+  }
+  if (troops.length > 0) {
+    const byStructure = new Map(structures.map((s) => [s.id, s]));
+    const forTroops = structures
+      .filter((s) => !s.destroyed && s.type !== 'mine')
+      .map((s) => ({ id: s.id, x: s.x, z: s.z, radius: s.type === 'keep' ? TROOPS.keepRadius : isBonus(s.type) ? 1.6 : 2.4, hp: s.hp, maxHp: s.maxHp, destroyed: false, side: 'island' as TroopSide, repairable: !(s.type === 'keep' || isBonus(s.type)) }));
+    events.push(...stepTroops({ tick, siege, beachRadius: beach, wallRadius: state.wallRadius, structures: forTroops }, troops, gate));
+    for (const ts of forTroops) byStructure.get(ts.id)!.hp = ts.hp;
+  }
+  // Support boats: in formation behind the ship, then on station off the shore; grapeshot at troops only.
+  boats.forEach((b, i) => {
+    if (b.sunk) return;
+    const p = player.ship;
+    let tx: number;
+    let tz: number;
+    if (landing || Math.hypot(p.x, p.z) - shore < 70) {
+      const ref = landing ?? p;
+      const spreadSide = (i % 2 === 0 ? 1 : -1) * (0.22 + 0.2 * Math.floor(i / 2));
+      const a = Math.atan2(ref.x, ref.z) + spreadSide;
+      tx = Math.sin(a) * (shore + TROOPS.boatStation);
+      tz = Math.cos(a) * (shore + TROOPS.boatStation);
+    } else {
+      const side = i % 2 === 0 ? 1 : -1;
+      tx = p.x - Math.sin(p.heading) * 12 + Math.cos(p.heading) * side * 7;
+      tz = p.z - Math.cos(p.heading) * 12 - Math.sin(p.heading) * side * 7;
+    }
+    b.ship = resolveCollisions(arena, stepShip(b.ship, boatSteer(b, tx, tz), TICK_SECONDS, SUPPORT_BOAT));
+    b.cooldown = Math.max(0, b.cooldown - 1);
+    if (b.cooldown > 0) return;
+    const { pellets, damage, range, reloadSeconds } = TROOPS.grapeshot;
+    const foes = troops.filter((t) => !t.dead && t.hp > 0 && hostileTroop('player', t.side, siege) && Math.hypot(t.x - b.ship.x, t.z - b.ship.z) <= range);
+    if (foes.length === 0) return;
+    foes.sort((u, v) => Math.hypot(u.x - b.ship.x, u.z - b.ship.z) - Math.hypot(v.x - b.ship.x, v.z - b.ship.z) || u.id - v.id);
+    const aim = foes[0]!;
+    const near = foes.filter((t) => Math.hypot(t.x - aim.x, t.z - aim.z) <= 3).slice(0, pellets);
+    for (let k = 0; k < pellets; k++) {
+      const t = near[k % near.length]!;
+      t.hp = Math.max(0, t.hp - damage);
+    }
+    b.cooldown = secondsToTicks(reloadSeconds);
+    events.push({ type: 'grapeshot', id: b.id, x: b.ship.x, z: b.ship.z, toX: aim.x, toZ: aim.z });
+  });
+
   // Who each side can hit, after movement. In an assault the island's ghosts fight for the island.
-  const living = player.sunk ? [] : [shipTarget(player)];
+  const boatTargets = boats.filter((b) => !b.sunk).map(boatTarget);
+  const troopTargets = (side: TroopSide) => troops.filter((t) => !t.dead && t.hp > 0 && t.side === side).map(troopTarget);
+  for (const t of troops) if (!t.dead) visible.add(t.id);
+  const living = player.sunk ? boatTargets : [shipTarget(player), ...boatTargets];
   const ghostTargets = ghosts.filter((g) => !g.sunk).map(shipTarget);
   const standing = structures.filter((s) => !s.destroyed && s.type !== 'mine').map(structureTarget);
   const hostileToPlayer = assault ? [...standing, ...ghostTargets] : ghostTargets;
-  const hostileToIsland = assault ? living : ghostTargets;
+  // Towers also fire at enemy troops ashore; nothing else aims at troops but other troops and boats.
+  const hostileToIsland = assault ? [...living, ...troopTargets('player')] : [...ghostTargets, ...troopTargets('ghost')];
   const hostileToGhosts = assault ? living : [...living, ...standing];
   const targetsOf = (side: Side): readonly Target[] => (side === 'player' ? hostileToPlayer : side === 'island' ? hostileToIsland : hostileToGhosts);
 
   const shots: Shot[] = state.shots.slice();
   const fires: FireZone[] = state.fires.filter((f) => f.untilTick > tick);
-  let nextId = state.nextId;
   let barrelCooldown = Math.max(0, state.barrelCooldown - 1);
   let batsCooldown = Math.max(0, state.batsCooldown - 1);
   let mortarCooldown = Math.max(0, state.mortarCooldown - 1);
@@ -760,15 +1045,18 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
   }
 
   // Damage goes to the working copies.
-  const byId = new Map<number, Mutable<Structure> | Mutable<Combatant>>();
+  const byId = new Map<number, Mutable<Structure> | Mutable<Combatant> | Mutable<Troop> | Mutable<SupportBoat>>();
   for (const st of structures) byId.set(st.id, st);
   byId.set(player.id, player);
   for (const g of ghosts) byId.set(g.id, g);
+  for (const tr of troops) byId.set(tr.id, tr);
+  for (const bt of boats) byId.set(bt.id, bt);
   const hurt = (t: Target, kind: ShotKind, base: number, pierce: boolean, level: number) => {
-    const amount = shotDamage(kind, base, t.cls, pierce);
-    if (amount <= 0) return;
     const entity = byId.get(t.id);
     if (!entity) return;
+    // Guns are made for ships: a troop takes a share of a shot's damage.
+    const amount = shotDamage(kind, base, t.cls, pierce) * ('side' in entity ? TROOPS.shotDamageShare : 1);
+    if (amount <= 0) return;
     entity.hp = Math.max(0, entity.hp - amount);
     if (kind === 'salt' && t.cls === 'ghost' && 'slowedUntil' in entity) {
       entity.slowedUntil = Math.max(entity.slowedUntil, tick + secondsToTicks(at(WEAPONS.salt.slowSeconds, level)));
@@ -854,11 +1142,28 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
       if (!player.sunk && Math.hypot(player.ship.x - st.x, player.ship.z - st.z) <= blastRadius) player.hp = Math.max(0, player.hp - shipDamage);
     }
   }
+  // Deckhands aboard patch the hull, never past its full strength.
+  const hands = aboard.deckhand ?? 0;
+  if (hands > 0 && !player.sunk && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + hands * TROOPS.deckhandShipRepair * TICK_SECONDS);
   for (const c of [player, ...ghosts]) {
     if (!c.sunk && c.hp <= 0) {
       c.sunk = true;
       c.ship = { ...c.ship, speed: 0, sail: 0, sailLevel: 0, rudder: 0 };
       events.push({ type: 'sunk', id: c.id, kind: c.kind, x: c.ship.x, z: c.ship.z });
+    }
+  }
+  for (const bt of boats) {
+    if (!bt.sunk && bt.hp <= 0) {
+      bt.sunk = true;
+      bt.ship = { ...bt.ship, speed: 0, sail: 0, sailLevel: 0, rudder: 0 };
+      events.push({ type: 'sunk', id: bt.id, kind: 'boat', x: bt.ship.x, z: bt.ship.z });
+    }
+  }
+  // Troops struck down by shots and grapeshot this tick.
+  for (const tr of troops) {
+    if (!tr.dead && tr.hp <= 0) {
+      tr.dead = true;
+      events.push({ type: 'fallen', id: tr.id, troop: tr.type, side: tr.side, x: tr.x, z: tr.z });
     }
   }
 
@@ -878,6 +1183,13 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
     nextId,
     events,
     result: null,
+    troops,
+    aboard,
+    landing,
+    gate,
+    boats,
+    boarded,
+    troopRng: troopRng.state(),
   };
 
   // 9. Has the battle ended? Treasure vaults and powder stores don't count.
@@ -930,8 +1242,21 @@ function finish(state: BattleState, reason: BattleEndReason): BattleState {
       ghostsTotal: state.ghosts.length,
       hull: state.player.hp,
       maxHull: state.player.maxHp,
+      lost: troopLosses(state),
     },
   };
+}
+
+/** The captain's troops that died: the party's, and in a siege the garrison's (it is theirs). */
+function troopLosses(state: BattleState): { ship: TroopCounts; island: TroopCounts } {
+  const ship: TroopCounts = {};
+  const island: TroopCounts = {};
+  for (const t of state.troops) {
+    if (!t.dead) continue;
+    if (t.side === 'player') ship[t.type] = (ship[t.type] ?? 0) + 1;
+    else if (t.side === 'island' && state.setup.mode === 'siege') island[t.type] = (island[t.type] ?? 0) + 1;
+  }
+  return { ship, island };
 }
 
 function sameInput(a: BattleInput, b: BattleInput): boolean {
