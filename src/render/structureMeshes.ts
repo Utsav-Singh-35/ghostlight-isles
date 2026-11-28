@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import type { DefenseType } from '../sim/layout';
-import { ghostSpireGeometry } from './fortMeshes';
+import { extraPosition, fortLayout, slotPosition, type BonusType, type DefenseType } from '../sim/layout';
+import type { World } from '../sim/world';
+import { hauntedKeepGeometry } from './fortMeshes';
 import { lighthouseGeometry } from './islands';
 import { MeshBuilder, placed, vertexColorMaterial } from './meshBuilder';
 import { PALETTE } from './palette';
@@ -12,14 +13,59 @@ const WOOD = '#5A4028';
 const BONE = '#D8CDB2';
 const PUMPKIN = '#E07A1F';
 
+const GOLD = '#E8B04A';
+const POWDER_RED = '#8A1E1A';
+
 /** Height of each defense's glowing part above its base, metres. */
-export const GLOW_HEIGHT: Readonly<Record<DefenseType | 'keep', number>> = {
+export const GLOW_HEIGHT: Readonly<Record<DefenseType | 'keep' | BonusType, number>> = {
   cannonTower: 2.6,
   spiritLantern: 6.85,
   boneCatapult: 2.2,
   mine: 0.4,
   keep: 10.5,
+  vault: 1.9,
+  powder: 1.7,
 };
+
+/** A treasure vault: a squat stone crypt with iron bands, its lid pushed aside on a heap of gold. */
+function vaultGeometry(): THREE.BufferGeometry {
+  const b = new MeshBuilder();
+  b.add(new THREE.BoxGeometry(2.8, 0.4, 2.2).translate(0, 0.2, 0), STONE_DARK);
+  b.add(new THREE.BoxGeometry(2.4, 1.2, 1.8).translate(0, 1.0, 0), STONE);
+  for (const x of [-0.8, 0.8]) b.add(new THREE.BoxGeometry(0.16, 1.25, 1.86).translate(x, 1.0, 0), IRON);
+  b.add(new THREE.BoxGeometry(2.6, 0.25, 2.0), STONE_DARK, placed([0.5, 1.75, 0.3], [0.12, 0.5, 0.18]));
+  // Gold spilling out of it: coins, bars and a chalice.
+  for (const [x, z, s] of [[-0.5, -0.2, 0.55], [0.1, 0.25, 0.45], [-0.15, -0.5, 0.35]] as const) {
+    b.add(new THREE.SphereGeometry(s, 6, 4), GOLD, placed([x, 1.6 + s * 0.3, z], [0, 0, 0], [1, 0.45, 1]), 1.15);
+  }
+  b.add(new THREE.BoxGeometry(0.5, 0.15, 0.22), GOLD, placed([0.45, 1.68, -0.45], [0, 0.4, 0]), 1.2);
+  b.add(new THREE.CylinderGeometry(0.14, 0.08, 0.35, 6).translate(-0.7, 1.85, 0.4), GOLD, undefined, 1.2);
+  // A skull on the front, so nobody mistakes it for a gift.
+  b.add(new THREE.SphereGeometry(0.22, 6, 5), BONE, placed([0, 1.05, 0.92]));
+  return b.build();
+}
+
+/** A powder store: barrels of black powder on a pallet, banded red, under a skull-and-bones board. */
+function powderGeometry(): THREE.BufferGeometry {
+  const b = new MeshBuilder();
+  b.add(new THREE.BoxGeometry(2.6, 0.2, 2.0).translate(0, 0.1, 0), WOOD);
+  const barrel = (x: number, y: number, z: number, lying: boolean) => {
+    const rotation: [number, number, number] = lying ? [0, 0, Math.PI / 2] : [0, 0, 0];
+    b.add(new THREE.CylinderGeometry(0.42, 0.42, 0.95, 8), '#4A3524', placed([x, y, z], rotation));
+    b.add(new THREE.CylinderGeometry(0.44, 0.44, 0.12, 8), POWDER_RED, placed([x, y, z], rotation));
+  };
+  barrel(-0.6, 0.68, -0.4, false);
+  barrel(0.45, 0.68, -0.45, false);
+  barrel(-0.1, 0.68, 0.5, false);
+  barrel(-0.1, 1.55, -0.4, true);
+  // The warning board, on a post.
+  b.add(new THREE.BoxGeometry(0.12, 2.0, 0.12).translate(1.05, 1.0, 0.7), WOOD);
+  b.add(new THREE.BoxGeometry(0.85, 0.6, 0.06).translate(1.05, 1.95, 0.76), '#2A2020');
+  b.add(new THREE.SphereGeometry(0.15, 6, 5), BONE, placed([1.05, 2.0, 0.81]));
+  b.add(new THREE.BoxGeometry(0.5, 0.06, 0.04), BONE, placed([1.05, 1.82, 0.81], [0, 0, 0.6]));
+  b.add(new THREE.BoxGeometry(0.5, 0.06, 0.04), BONE, placed([1.05, 1.82, 0.81], [0, 0, -0.6]));
+  return b.build();
+}
 
 function cannonTowerGeometry(): THREE.BufferGeometry {
   const b = new MeshBuilder();
@@ -86,7 +132,7 @@ function mineGeometry(): THREE.BufferGeometry {
 }
 
 export interface StructureView {
-  readonly type: DefenseType;
+  readonly type: DefenseType | BonusType;
   readonly level: number;
   readonly x: number;
   readonly y: number;
@@ -98,13 +144,14 @@ export interface StructureView {
   readonly visible: boolean;
 }
 
-const TYPES: readonly DefenseType[] = ['cannonTower', 'spiritLantern', 'boneCatapult', 'mine'];
+type DrawnType = DefenseType | BonusType;
+const TYPES: readonly DrawnType[] = ['cannonTower', 'spiritLantern', 'boneCatapult', 'mine', 'vault', 'powder'];
 const LEVEL_SCALE = [1, 1.12, 1.25] as const;
 
 /** Every defense of one island, drawn as one instanced mesh per type plus one for lantern glass. */
 export class StructureSet {
   readonly group = new THREE.Group();
-  private readonly meshes = new Map<DefenseType, THREE.InstancedMesh>();
+  private readonly meshes = new Map<DrawnType, THREE.InstancedMesh>();
   private readonly glass: THREE.InstancedMesh;
   private readonly material = vertexColorMaterial();
   private readonly glassMaterial = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false });
@@ -114,11 +161,13 @@ export class StructureSet {
   private readonly hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
   constructor(private readonly capacity = 24) {
-    const builders: Record<DefenseType, () => THREE.BufferGeometry> = {
+    const builders: Record<DrawnType, () => THREE.BufferGeometry> = {
       cannonTower: cannonTowerGeometry,
       spiritLantern: spiritLanternGeometry,
       boneCatapult: boneCatapultGeometry,
       mine: mineGeometry,
+      vault: vaultGeometry,
+      powder: powderGeometry,
     };
     for (const type of TYPES) {
       const mesh = new THREE.InstancedMesh(builders[type](), this.material, capacity);
@@ -136,7 +185,7 @@ export class StructureSet {
 
   /** Draws these defenses. Destroyed ones become dark rubble; hidden mines vanish. */
   set(views: readonly StructureView[]): void {
-    const counts = new Map<DefenseType, number>();
+    const counts = new Map<DrawnType, number>();
     let glassCount = 0;
     for (const v of views) {
       const mesh = this.meshes.get(v.type);
@@ -184,25 +233,53 @@ export class StructureSet {
   }
 }
 
-/** A keep model: the lighthouse for living islands, the ghost spire for haunted ones, `scale` times its normal size. */
-export function createKeepMesh(living: boolean, scale = 1): { mesh: THREE.Group; lanternHeight: number; scale: number; dispose(): void } {
+/** A keep as drawn in a battle. */
+export interface KeepMesh {
+  readonly mesh: THREE.Group;
+  /** The lamp glass, or a skull tower's burning eyes. Hidden when the keep falls. */
+  readonly glass: THREE.Mesh;
+  /** Height of the keep's light above its base, after scaling. */
+  readonly lanternHeight: number;
+  /** Height of the keep's highest point above its base, after scaling. */
+  readonly top: number;
+  /** Whether the keep has a lamp (true) or burning eyes (false). */
+  readonly lamp: boolean;
+  readonly scale: number;
+  dispose(): void;
+}
+
+/**
+ * A keep model, `scale` times its normal size: the lighthouse for living islands, and for haunted
+ * ones the keep of its fort level (ghost spire, broken lighthouse or skull tower).
+ */
+export function createKeepMesh(living: boolean, scale = 1, fortLevel = 1): KeepMesh {
   const group = new THREE.Group();
   group.scale.setScalar(scale);
-  const { body, lanternHeight } = living ? lighthouseGeometry() : ghostSpireGeometry();
+  const { body, lanternHeight, eyes } = living ? { ...lighthouseGeometry(), eyes: [] } : hauntedKeepGeometry(fortLevel);
+  body.computeBoundingBox();
+  const top = body.boundingBox?.max.y ?? lanternHeight + 2;
   const material = vertexColorMaterial();
   group.add(new THREE.Mesh(body, material));
   const glassMaterial = new THREE.MeshBasicMaterial({
     color: new THREE.Color(living ? PALETTE.lantern : PALETTE.spectral).multiplyScalar(1.4),
     toneMapped: false,
   });
-  const glassGeometry = new THREE.BoxGeometry(living ? 2.3 : 1.4, living ? 1.5 : 1.7, living ? 2.3 : 1.4);
+  let glassGeometry: THREE.BufferGeometry;
+  if (eyes.length > 0) {
+    const b = new MeshBuilder();
+    for (const [x, y, z] of eyes) b.add(new THREE.BoxGeometry(0.62, 0.42, 0.3), '#ffffff', placed([x, y, z]));
+    glassGeometry = b.build();
+  } else {
+    glassGeometry = new THREE.BoxGeometry(living ? 2.3 : 1.4, living ? 1.5 : 1.7, living ? 2.3 : 1.4).translate(0, lanternHeight, 0);
+  }
   const glass = new THREE.Mesh(glassGeometry, glassMaterial);
-  glass.position.y = lanternHeight;
-  if (!living) glass.position.x = 0;
   group.add(glass);
   return {
     mesh: group,
+    glass,
     lanternHeight: lanternHeight * scale,
+    top: top * scale,
+    lamp: eyes.length === 0,
     scale,
     dispose() {
       body.dispose();
@@ -211,4 +288,21 @@ export function createKeepMesh(living: boolean, scale = 1): { mesh: THREE.Group;
       glassMaterial.dispose();
     },
   };
+}
+
+/** A haunted fort's towers, vaults and powder stores as seen from the open sea, before anyone attacks. Mines stay hidden. */
+export function fortDefenseViews(world: World, groundAt: (islandId: number, x: number, z: number) => number): Array<StructureView & { readonly islandId: number }> {
+  const views: Array<StructureView & { readonly islandId: number }> = [];
+  for (const island of world.islands) {
+    if (island.kind !== 'haunted') continue;
+    const layout = fortLayout(island);
+    const add = (type: DrawnType, level: number, p: { x: number; z: number }) => {
+      const x = island.x + p.x;
+      const z = island.z + p.z;
+      views.push({ islandId: island.id, type, level, x, y: groundAt(island.id, x, z), z, facing: Math.atan2(p.x, p.z), destroyed: false, visible: true });
+    };
+    for (const d of layout.defenses) if (d.type !== 'mine') add(d.type, d.level, slotPosition(island.radius, d.slot, layout.slotCount));
+    for (const e of layout.extras) add(e.type, layout.level, extraPosition(island.radius, e.slot, layout.slotCount));
+  }
+  return views;
 }

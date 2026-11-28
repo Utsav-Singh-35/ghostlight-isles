@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createRng } from '../sim/rng';
 import type { GlowKind, GlowSpec, WispSpec } from './islands';
 import { PALETTE } from './palette';
-import { sampleWaveHeight } from './waves';
+import { waveHeightGlsl, wavePhases } from './waves';
 
 /** Converts a world size in metres to pixels: drawing-buffer height / (2 tan(fov / 2)). */
 export function pointScale(camera: THREE.PerspectiveCamera, bufferHeight: number): number {
@@ -209,29 +209,56 @@ export function createWisps(specs: readonly WispSpec[]): Wisps {
   };
 }
 
-// ---- Foam wake: a ring buffer of particles spawned at the stern, floating on the waves ----
+// ---- Foam wake: a ring buffer of flat foam patches spawned at the stern, lying on the waves ----
 
 const wakeVertex = /* glsl */ `
-attribute float aSize;
+attribute vec4 aPatch; // x, z, size, turn
 attribute float aAlpha;
-uniform float uScale;
+uniform vec4 uWavePhase;
+uniform float uLift;
+varying vec2 vLocal;
+varying vec2 vWorld;
 varying float vAlpha;
 #include <fog_pars_vertex>
+${waveHeightGlsl()}
 void main() {
-  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  vAlpha = aAlpha;
-  gl_PointSize = aSize <= 0.0 ? 0.0 : clamp(aSize * uScale / max(-mvPosition.z, 0.1), 1.0, 300.0);
+  float c = cos(aPatch.w);
+  float s = sin(aPatch.w);
+  vec2 local = position.xy * aPatch.z;
+  vec2 xz = aPatch.xy + vec2(c * local.x - s * local.y, s * local.x + c * local.y);
+  // Every corner sits on the wave under it, so the patch bends with the sea. The lift covers the
+  // gap between the true wave and the sea's coarser grid.
+  vec3 world = vec3(xz.x, waveHeight(xz, uWavePhase) + uLift, xz.y);
+  vLocal = position.xy * 2.0;
+  vWorld = xz;
+  vAlpha = aPatch.z <= 0.0 ? 0.0 : aAlpha;
+  vec4 mvPosition = viewMatrix * vec4(world, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`;
 
 const wakeFragment = /* glsl */ `
 uniform vec3 uColor;
+varying vec2 vLocal;
+varying vec2 vWorld;
 varying float vAlpha;
 #include <fog_pars_fragment>
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
 void main() {
-  float d = length(gl_PointCoord - 0.5) * 2.0;
-  float a = (1.0 - smoothstep(0.35, 1.0, d)) * vAlpha;
+  float edge = 1.0 - smoothstep(0.3, 1.0, length(vLocal));
+  // Lace pinned to the water, not to the patch, so overlapping patches join up into one trail.
+  float lace = noise(vWorld * 1.6) * 0.6 + noise(vWorld * 4.3 + 1.7) * 0.4;
+  float a = smoothstep(0.42, 0.7, lace * 0.75 + edge * 0.45) * edge * vAlpha;
   if (a < 0.01) discard;
   gl_FragColor = vec4(uColor, a);
   #include <colorspace_fragment>
@@ -247,15 +274,16 @@ export interface WakeSource {
 }
 
 export interface Wake {
-  readonly points: THREE.Points;
+  readonly points: THREE.Mesh;
   update(source: WakeSource, dt: number, time: number, scale: number): void;
   dispose(): void;
 }
 
-export function createWake(capacity: number): Wake {
+/** A foam wake of up to `capacity` patches, lifted `lift` metres so the sea's grid never swallows them. */
+export function createWake(capacity: number, lift = 0.15): Wake {
   const rng = createRng(0x3a6e);
-  const positions = new Float32Array(capacity * 3);
-  const sizes = new Float32Array(capacity);
+  /** Per patch: x, z, size and turn, as the shader reads them. */
+  const patches = new Float32Array(capacity * 4);
   const alphas = new Float32Array(capacity);
   const age = new Float32Array(capacity).fill(1e9);
   const life = new Float32Array(capacity).fill(1);
@@ -265,33 +293,41 @@ export function createWake(capacity: number): Wake {
   let next = 0;
   let pending = 0;
 
-  const geometry = new THREE.BufferGeometry();
-  const positionAttribute = new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage);
-  const sizeAttribute = new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage);
-  const alphaAttribute = new THREE.BufferAttribute(alphas, 1).setUsage(THREE.DynamicDrawUsage);
-  geometry.setAttribute('position', positionAttribute);
-  geometry.setAttribute('aSize', sizeAttribute);
+  const plane = new THREE.PlaneGeometry(1, 1, 2, 2);
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.index = plane.index;
+  geometry.setAttribute('position', plane.getAttribute('position'));
+  const patchAttribute = new THREE.InstancedBufferAttribute(patches, 4).setUsage(THREE.DynamicDrawUsage);
+  const alphaAttribute = new THREE.InstancedBufferAttribute(alphas, 1).setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('aPatch', patchAttribute);
   geometry.setAttribute('aAlpha', alphaAttribute);
+  geometry.instanceCount = capacity;
   const material = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
-      { uScale: { value: 500 }, uColor: { value: new THREE.Color(PALETTE.foam) } },
+      { uWavePhase: { value: new THREE.Vector4() }, uLift: { value: lift }, uColor: { value: new THREE.Color(PALETTE.foam).multiplyScalar(0.8) } },
     ]),
     vertexShader: wakeVertex,
     fragmentShader: wakeFragment,
     transparent: true,
     depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
     fog: true,
   });
-  const points = new THREE.Points(geometry, material);
-  points.frustumCulled = false;
-  points.renderOrder = 4;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 4;
+  const phases: [number, number, number, number] = [0, 0, 0, 0];
 
   const spawn = (x: number, z: number, outX: number, outZ: number, size: number, lifetime: number) => {
     const i = next;
     next = (next + 1) % capacity;
-    positions[i * 3] = x + rng.range(-0.3, 0.3);
-    positions[i * 3 + 2] = z + rng.range(-0.3, 0.3);
+    patches[i * 4] = x + rng.range(-0.3, 0.3);
+    patches[i * 4 + 1] = z + rng.range(-0.3, 0.3);
+    patches[i * 4 + 3] = rng.range(0, Math.PI * 2);
     vx[i] = outX;
     vz[i] = outZ;
     age[i] = 0;
@@ -300,31 +336,31 @@ export function createWake(capacity: number): Wake {
   };
 
   return {
-    points,
-    update(source, dt, time, scale) {
-      material.uniforms.uScale!.value = scale;
+    points: mesh,
+    update(source, dt, time) {
+      (material.uniforms.uWavePhase!.value as THREE.Vector4).fromArray(wavePhases(time, phases));
       const fx = Math.sin(source.heading);
       const fz = Math.cos(source.heading);
       const px = Math.cos(source.heading);
       const pz = -Math.sin(source.heading);
       const share = source.speed / source.maxSpeed;
 
-      pending += dt * share * 70;
+      pending += dt * share * 46;
       while (pending >= 1) {
         pending -= 1;
         const side = rng.next() < 0.5 ? -1 : 1;
-        const outward = rng.range(0.4, 1.1) * share;
+        const outward = rng.range(0.5, 1.2) * share;
         spawn(
-          source.x - fx * 5.6 + px * side * 1.3,
-          source.z - fz * 5.6 + pz * side * 1.3,
+          source.x - fx * 5.4 + px * side * 1.2,
+          source.z - fz * 5.4 + pz * side * 1.2,
           px * side * outward,
           pz * side * outward,
-          rng.range(0.7, 1.2),
-          rng.range(2.2, 3.6),
+          rng.range(1.6, 2.4),
+          rng.range(3.5, 5.5),
         );
-        if (share > 0.35 && rng.next() < 0.5) {
-          // Spray from the bow at speed.
-          spawn(source.x + fx * 5.4 + px * side * 1.2, source.z + fz * 5.4 + pz * side * 1.2, px * side * 1.6 * share, pz * side * 1.6 * share, 0.6, 1.2);
+        if (share > 0.35 && rng.next() < 0.6) {
+          // The bow wave, peeling away from the stem at speed.
+          spawn(source.x + fx * 5.0 + px * side * 1.3, source.z + fz * 5.0 + pz * side * 1.3, px * side * 2.2 * share, pz * side * 2.2 * share, 1.3, 1.8);
         }
       }
 
@@ -333,23 +369,22 @@ export function createWake(capacity: number): Wake {
         age[i]! += dt;
         const t = age[i]! / life[i]!;
         if (t >= 1) {
-          sizes[i] = 0;
+          patches[i * 4 + 2] = 0;
           alphas[i] = 0;
           continue;
         }
         vx[i]! *= damping;
         vz[i]! *= damping;
-        const x = (positions[i * 3]! += vx[i]! * dt);
-        const z = (positions[i * 3 + 2]! += vz[i]! * dt);
-        positions[i * 3 + 1] = sampleWaveHeight(x, z, time) + 0.12;
-        sizes[i] = size0[i]! * (1 + t * 2.4);
-        alphas[i] = (1 - t) * Math.min(1, age[i]! * 5) * 0.3;
+        patches[i * 4]! += vx[i]! * dt;
+        patches[i * 4 + 1]! += vz[i]! * dt;
+        patches[i * 4 + 2] = size0[i]! * (1 + t * 1.8);
+        alphas[i] = (1 - t) * (1 - t) * Math.min(1, age[i]! * 4) * 0.75;
       }
-      positionAttribute.needsUpdate = true;
-      sizeAttribute.needsUpdate = true;
+      patchAttribute.needsUpdate = true;
       alphaAttribute.needsUpdate = true;
     },
     dispose() {
+      plane.dispose();
       geometry.dispose();
       material.dispose();
     },

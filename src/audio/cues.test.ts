@@ -5,7 +5,7 @@ import type { DefenseType } from '../sim/layout';
 import { CRITICAL_CUES, CUE_LIMIT, MAX_GAIN, MAX_PAN, MIN_GAIN, cueOf, loudness, panOf, planCues, type Listener } from './cues';
 
 const coord = fc.double({ noNaN: true, noDefaultInfinity: true, min: -400, max: 400 });
-const shot = fc.constantFrom<ShotType>('ball', 'salt', 'tower', 'lantern', 'stone', 'bolt', 'barrel', 'fire', 'mine');
+const shot = fc.constantFrom<ShotType>('ball', 'salt', 'tower', 'lantern', 'stone', 'bolt', 'barrel', 'fire', 'mine', 'pumpkin');
 const structure = fc.constantFrom<DefenseType | 'keep'>('cannonTower', 'spiritLantern', 'boneCatapult', 'mine', 'keep');
 const id = fc.nat({ max: 60 });
 
@@ -15,6 +15,7 @@ const event: fc.Arbitrary<BattleEvent> = fc.oneof(
   fc.record({ type: fc.constant('destroyed' as const), id, structure, x: coord, z: coord }),
   fc.record({ type: fc.constant('sunk' as const), id, kind: fc.constantFrom('player' as const, 'ghost' as const), x: coord, z: coord }),
   fc.record({ type: fc.constant('mine' as const), id, x: coord, z: coord }),
+  fc.record({ type: fc.constant('powder' as const), id, x: coord, z: coord }),
   fc.constant({ type: 'bats' as const }),
 );
 

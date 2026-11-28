@@ -89,7 +89,7 @@ describe('base-building spec: rules', () => {
         let cost: { gold: number; ectoplasm: number };
         if (c.op === 'ship') {
           const part = c.part as ShipPart;
-          cost = COSTS[part][p.weapons[part]]!;
+          cost = COSTS[part][p.weapons[part] ?? 0]!;
         } else if (c.op === 'home') {
           cost = p.homeLevel === 1 ? { gold: 1500, ectoplasm: 0 } : { gold: 4000, ectoplasm: 120 };
         } else if (c.op === 'build') {

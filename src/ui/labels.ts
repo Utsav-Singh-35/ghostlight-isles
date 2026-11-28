@@ -4,7 +4,8 @@ import type { ShipState } from '../sim/ship';
 import type { World } from '../sim/world';
 import { el, setText } from './dom';
 
-const LABEL_RANGE = 350;
+/** Labels show for islands whose shore is within this far of the ship, metres. */
+export const LABEL_RANGE = 350;
 const MAX_LABELS = 5;
 
 export interface Projector {
@@ -12,22 +13,31 @@ export interface Projector {
 }
 
 export interface Labels {
-  update(ship: ShipState, projector: Projector, anchors: readonly THREE.Vector3[]): void;
+  /** `selected` is the island whose fort report is open, or null. */
+  update(ship: ShipState, projector: Projector, anchors: readonly THREE.Vector3[], selected?: number | null): void;
   setVisible(visible: boolean): void;
   /** Captured islands are labelled "Yours". */
   setCaptured(ids: readonly number[]): void;
 }
 
-/** Floating names over nearby islands: name, owner in words (not only color) and distance. */
-export function createLabels(parent: HTMLElement, world: World): Labels {
+/**
+ * Floating names over nearby islands: name, owner and fort level in words (not only color) and
+ * distance. Haunted islands' labels are buttons: click one to read its fort report.
+ */
+export function createLabels(parent: HTMLElement, world: World, onSelect: (islandId: number) => void = () => {}): Labels {
   const root = el('div', 'labels');
   parent.append(root);
   const pool = Array.from({ length: MAX_LABELS }, () => {
-    const label = el('div', 'island-label');
+    const label = el('button', 'island-label');
+    label.type = 'button';
     const name = el('span', 'island-name');
     const detail = el('span', 'island-detail');
     label.append(name, detail);
     label.hidden = true;
+    label.addEventListener('click', () => {
+      const id = Number(label.dataset.island);
+      if (label.classList.contains('island-haunted') && id > 0) onSelect(id);
+    });
     root.append(label);
     return { label, name, detail };
   });
@@ -36,7 +46,7 @@ export function createLabels(parent: HTMLElement, world: World): Labels {
   let captured = new Set<number>();
 
   return {
-    update(ship, projector, anchors) {
+    update(ship, projector, anchors, selected = null) {
       const nearby = world.islands
         .map((island) => ({ island, distance: Math.hypot(island.x - ship.x, island.z - ship.z) - island.radius }))
         .filter((entry) => entry.distance < LABEL_RANGE)
@@ -53,8 +63,12 @@ export function createLabels(parent: HTMLElement, world: World): Labels {
         slot.label.hidden = false;
         const home = entry.island.kind === 'home';
         const ours = home || captured.has(entry.island.id);
+        slot.label.dataset.island = String(entry.island.id);
         slot.label.classList.toggle('island-home', ours);
         slot.label.classList.toggle('island-haunted', !ours);
+        slot.label.classList.toggle('island-selected', entry.island.id === selected);
+        slot.label.tabIndex = ours ? -1 : 0;
+        slot.label.title = ours ? '' : `Read the fort report for ${entry.island.name}`;
         setText(slot.name, entry.island.name);
         const metres = Math.max(0, Math.round(entry.distance / 10) * 10);
         setText(slot.detail, `${home ? 'Your home' : ours ? 'Yours' : `Haunted · fort ${fortDifficulty(entry.island)}`} · ${metres} m`);

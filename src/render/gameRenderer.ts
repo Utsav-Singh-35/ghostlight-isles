@@ -7,11 +7,11 @@ import { BattleLayer } from './battleLayer';
 import { CameraRig, type CameraMode, type CameraTarget } from './cameraRig';
 import { createGlows, createWake, createWisps, pointScale, type Glows, type Wake, type Wisps } from './effects';
 import { createIslands, type IslandScene, type LightAnchor } from './islands';
-import { createOcean, type Ocean } from './ocean';
+import { createOcean, type Ocean, type Shore } from './ocean';
 import { PALETTE } from './palette';
 import { createShipModel, type ShipModel } from './shipMesh';
 import { createSky, type Sky } from './sky';
-import { StructureSet, type StructureView } from './structureMeshes';
+import { StructureSet, fortDefenseViews, type StructureView } from './structureMeshes';
 import { sampleWaveHeight } from './waves';
 
 export type Quality = 'high' | 'low';
@@ -70,6 +70,9 @@ export class GameRenderer {
   private readonly sky: Sky;
   private readonly islands: IslandScene;
   private readonly homeDefenses = new StructureSet(24);
+  /** The haunted forts' towers, vaults and powder stores. Captured forts show theirs as rubble. */
+  private readonly fortDefenses: StructureSet;
+  private readonly fortViews: ReturnType<typeof fortDefenseViews>;
   private readonly ship: ShipModel;
   private readonly glows: Glows;
   private readonly wisps: Wisps;
@@ -90,6 +93,7 @@ export class GameRenderer {
   private bob = 0;
   private readonly tmp = new THREE.Vector3();
   private readonly projected = new THREE.Vector3();
+  private readonly shores: Shore[] = [];
   private readonly lanternColor = new THREE.Color(PALETTE.lantern);
   private readonly spectralColor = new THREE.Color(PALETTE.spectral);
   private readonly night = {
@@ -141,11 +145,16 @@ export class GameRenderer {
     this.sky.setPixelRatio(this.pixelRatio);
     this.scene.add(this.sky.dome, this.sky.stars);
 
-    this.ocean = createOcean(high ? 4 : 8, MOON_DIRECTION);
+    this.ocean = createOcean(high ? 4 : 8, MOON_DIRECTION, quality);
     this.scene.add(this.ocean.mesh);
 
     this.islands = createIslands(world);
     this.islands.group.add(this.homeDefenses.group);
+    // Every fort shows the towers and treasure it will fight with, so a captain can size it up from the sea.
+    this.fortViews = fortDefenseViews(world, (id, x, z) => this.islands.groundAt(id, x, z));
+    this.fortDefenses = new StructureSet(Math.max(1, this.fortViews.length));
+    this.fortDefenses.set(this.fortViews);
+    this.islands.group.add(this.fortDefenses.group);
     this.scene.add(this.islands.group);
 
     this.ship = createShipModel();
@@ -156,7 +165,8 @@ export class GameRenderer {
       { position: new THREE.Vector3(), kind: 'lantern', size: 1.5 },
     ]);
     this.wisps = createWisps(this.islands.wisps);
-    this.wake = createWake(high ? 260 : 120);
+    // Low's sea grid is twice as coarse, so its foam floats a little higher.
+    this.wake = createWake(high ? 260 : 120, high ? 0.15 : 0.35);
     this.scene.add(this.glows.points, this.wisps.points, this.wake.points);
 
     // At most three point lights: the ship's lantern, the lighthouse and the nearest ghost light.
@@ -231,6 +241,7 @@ export class GameRenderer {
     const set = new Set(ids);
     this.captured = set;
     this.islands.setCaptured(set);
+    this.fortDefenses.set(this.fortViews.map((v) => (set.has(v.islandId) ? { ...v, destroyed: true } : v)));
     this.glows.setCaptured(set);
     this.wisps.setCaptured(set);
   }
@@ -319,7 +330,17 @@ export class GameRenderer {
     this.wake.update({ x: ship.x, z: ship.z, heading: ship.heading, speed: sunk ? 0 : ship.speed, maxSpeed: SHIP.maxSpeed }, dt, time, this.scale);
     this.rig.update(frame.cameraTarget ?? ship, dt, time, frame.mode, sea, this.battle ? { x: 0, z: 0 } : undefined);
     this.sky.update(this.rig.camera, time);
-    this.ocean.update(this.rig.camera.position.x, this.rig.camera.position.z, time);
+    const camera = this.rig.camera.position;
+    this.ocean.update(camera.x, camera.z, time);
+    // Surf and shallows around the battle island, or the islands nearest the camera.
+    this.shores.length = 0;
+    if (this.battle) {
+      this.shores.push(this.battle.shore);
+    } else {
+      this.shores.push(...this.islands.shores);
+      this.shores.sort((a, b) => Math.hypot(a.x - camera.x, a.z - camera.z) - Math.hypot(b.x - camera.x, b.z - camera.z));
+    }
+    this.ocean.setShores(this.shores);
 
     this.renderer.render(this.scene, this.rig.camera);
   }
@@ -334,7 +355,7 @@ export class GameRenderer {
     mix.moon.lerpColors(night.moon, blood.moon, t);
     mix.sky.lerpColors(night.sky, blood.sky, t);
     this.sky.setColors(mix.top, mix.horizon, mix.moon);
-    this.ocean.setColors(mix.moon, mix.horizon);
+    this.ocean.setColors(mix.moon, mix.horizon, mix.top);
     this.fog.color.copy(mix.horizon);
     this.fog.density = FOG_DENSITY + (BLOOD_FOG_DENSITY - FOG_DENSITY) * t;
     this.moon.color.copy(mix.moon);
@@ -389,6 +410,7 @@ export class GameRenderer {
     this.sky.dispose();
     this.islands.dispose();
     this.homeDefenses.dispose();
+    this.fortDefenses.dispose();
     this.ship.dispose();
     this.glows.dispose();
     this.wisps.dispose();

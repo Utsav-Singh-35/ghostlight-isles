@@ -185,6 +185,11 @@ async function main() {
     check(prompted, 'sailing toward a haunted island offers to capture it');
     const promptText = await cap.locator('.context-prompt .cp-detail').textContent().catch(() => '');
     check(/Fort level 1 of 5/.test(promptText ?? '') && !(await cap.getByRole('button', { name: /Lantern Lines/ }).count()), `the prompt shows the fort's level and offers only a battle (${promptText})`);
+    // The label moves with the camera every frame, so send the click straight to it.
+    await cap.locator('.island-label.island-haunted', { hasText: 'Coffin Rock' }).first().dispatchEvent('click');
+    await sleep(300);
+    const reportTitle = await cap.locator('.context-prompt:not([hidden]) .cp-title').textContent().catch(() => '');
+    check(/fort 1 of 5/.test(reportTitle ?? ''), `clicking a fort's name opens its fort report (${reportTitle})`);
     await cap.keyboard.press('KeyS');
     await cap.keyboard.press('Digit1');
     await cap.waitForFunction(() => window.__ghostlight.mode === 'battle', null, { timeout: 10000 }).catch(() => {});
@@ -196,6 +201,8 @@ async function main() {
     const afterCapture = await cap.evaluate(() => window.__ghostlight.captain());
     check(afterCapture && afterCapture.captured.includes(1), 'breaking the fort in the browser captures the island on the server');
     check(afterCapture && afterCapture.resources.gold > 600, `the capture pays its reward (${afterCapture?.resources.gold} gold)`);
+    const rewardText = (await cap.locator('.result-lines').first().textContent().catch(() => '')) ?? '';
+    check(/silenced/.test(rewardText) && /In all:/.test(rewardText), 'the result card breaks the reward down, guns silenced and all');
     await cap.screenshot({ path: join(SHOTS, '08-island-captured.png') });
     await cap.getByRole('button', { name: 'Back to the sea' }).click();
     await sleep(1500);
@@ -223,6 +230,9 @@ async function main() {
     check(builder && builder.resources.gold === 450 && builder.resources.ectoplasm === 10, `the server charges exactly 150 gold and 20 ectoplasm (${builder?.resources.gold} gold, ${builder?.resources.ectoplasm} ectoplasm left)`);
     await sleep(2500);
     await basePage.screenshot({ path: join(SHOTS, '10-base.png') });
+    await basePage.getByRole('tab', { name: 'Shipwright' }).click().catch(() => {});
+    await sleep(200);
+    check(await basePage.locator('.base-panel').textContent().then((t) => /Pumpkin Mortar/.test(t ?? '')), 'the shipwright offers the Pumpkin Mortar');
     await basePage.keyboard.press('Tab');
     check(!(await basePage.locator('.base-panel').isVisible()), 'Tab closes the base panel again');
     await basePage.close();
@@ -319,6 +329,10 @@ async function main() {
     check((await fort.evaluate(() => window.__ghostlight.mode)) === 'battle', 'the fort scenario opens a battle');
     await fort.keyboard.press('KeyW');
     await sleep(9000);
+    await fort.keyboard.press('KeyT');
+    await sleep(200);
+    const locked = await fort.evaluate(() => window.__ghostlight.battle()?.lock ?? 0);
+    check(locked > 0, `T locks the guns on a target (id ${locked})`);
     await fort.keyboard.down('KeyQ');
     await fort.keyboard.down('KeyE');
     await fort.keyboard.down('KeyA');

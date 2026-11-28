@@ -270,9 +270,32 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  color: inherit;
   white-space: nowrap;
   text-shadow: 0 1px 3px #000;
+  background: none;
   will-change: transform;
+}
+
+/* Haunted islands' labels open their fort report; your own islands' labels let clicks through to the sea. */
+.overlay .island-label.island-home {
+  pointer-events: none;
+}
+
+.island-haunted {
+  cursor: pointer;
+}
+
+.island-haunted:hover,
+.island-haunted:focus-visible,
+.island-selected {
+  outline: none;
+  border-color: rgba(92, 255, 176, 0.55);
+  background: rgba(4, 14, 18, 0.45);
 }
 
 /* Author `display: flex` above would otherwise override the hidden attribute. */
@@ -568,8 +591,54 @@ kbd {
 
 .bh-weapons {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.7rem;
+}
+
+.bh-lines {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.2rem 1rem;
+}
+
+.bh-target {
+  font-size: 0.82rem;
+  color: rgba(227, 217, 194, 0.7);
+}
+
+.bh-target-on {
+  color: #ffe2a8;
+}
+
+/* Health bars are buttons with a bigger hit area than the bar: click one to lock that target. */
+.bh-hit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 8px 6px;
+  border: 0;
+  background: none;
+  cursor: crosshair;
+  will-change: transform;
+}
+
+.bh-hit[hidden] {
+  display: none;
+}
+
+.bh-hit .bh-hp {
+  position: static;
+  will-change: auto;
+}
+
+.bh-hp-locked {
+  outline: 2px solid var(--lantern);
+  outline-offset: 2px;
+}
+
+.bh-hp-gold .bh-hp-fill {
+  background: #e8b04a;
 }
 
 .bh-meter {
@@ -779,7 +848,7 @@ kbd {
   position: absolute;
   right: 1.2rem;
   bottom: 6.6rem;
-  max-width: 21rem;
+  max-width: 23rem;
   padding: 0.8rem 1rem;
   border: 1px solid var(--panel-edge);
   border-radius: 14px;
@@ -802,6 +871,10 @@ kbd {
   font-size: 0.84rem;
   line-height: 1.45;
   color: rgba(227, 217, 194, 0.85);
+}
+
+.cp-line + .cp-line {
+  margin-top: 0.3rem;
 }
 
 .cp-actions {

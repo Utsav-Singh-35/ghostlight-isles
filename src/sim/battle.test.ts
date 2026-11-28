@@ -9,6 +9,8 @@ import {
   recordInput,
   runBattle,
   sanitizeEvents,
+  scoreIsland,
+  secondsToTicks,
   shotDamage,
   stepBattle,
   type BattleInput,
@@ -17,7 +19,7 @@ import {
   type CrewState,
   type InputEvent,
 } from './battle';
-import { fortLayout, type DefenseType } from './layout';
+import { fortLayout, fortSetup, isBonus, type DefenseType } from './layout';
 import { angleDelta, clamp } from './math';
 import { hashSeed } from './rng';
 import { collisionRadius, generateWorld } from './world';
@@ -49,6 +51,7 @@ const setupArb: fc.Arbitrary<BattleSetup> = fc.record({
     salt: fc.constantFrom(0, 1, 2, 3),
     barrel: fc.constantFrom(0, 1, 2, 3),
     bats: fc.constantFrom(0, 1, 2, 3),
+    mortar: fc.constantFrom(0, 1, 2, 3),
     gunner: crew,
     navigator: crew,
   }),
@@ -62,18 +65,21 @@ const segments = fc.array(
   { maxLength: 16 },
 );
 
-function inputAt(plan: ReadonlyArray<readonly [number, number, number, number]>, index: number): BattleInput {
+/** A stretch of held input: [ticks, rudder, sail level, flags, locked target]. */
+type Segment = readonly [number, number, number, number, number?];
+
+function inputAt(plan: ReadonlyArray<Segment>, index: number): BattleInput {
   let remaining = index;
-  for (const [ticks, rudder, sailLevel, flags] of plan) {
-    if (remaining < ticks) return { rudder, sailLevel, flags };
+  for (const [ticks, rudder, sailLevel, flags, target = 0] of plan) {
+    if (remaining < ticks) return { rudder, sailLevel, flags, target };
     remaining -= ticks;
   }
   const last = plan[plan.length - 1];
-  return last ? { rudder: last[1], sailLevel: last[2], flags: last[3] } : DEFAULT_INPUT;
+  return last ? { rudder: last[1], sailLevel: last[2], flags: last[3], target: last[4] ?? 0 } : DEFAULT_INPUT;
 }
 
 /** Plays a battle tick by tick, as the game does, recording input changes. */
-function playLive(setup: BattleSetup, plan: ReadonlyArray<readonly [number, number, number, number]>, onStep?: (prev: BattleState, next: BattleState) => void) {
+function playLive(setup: BattleSetup, plan: ReadonlyArray<Segment>, onStep?: (prev: BattleState, next: BattleState, input: BattleInput) => void) {
   let state = createBattle(setup);
   const events: InputEvent[] = [];
   let last = DEFAULT_INPUT;
@@ -81,7 +87,7 @@ function playLive(setup: BattleSetup, plan: ReadonlyArray<readonly [number, numb
     const input = inputAt(plan, i);
     last = recordInput(events, last, state.tick + 1, input);
     const next = stepBattle(state, input);
-    onStep?.(state, next);
+    onStep?.(state, next, input);
     state = next;
   }
   return { state, events };
@@ -296,7 +302,7 @@ describe('combat spec: battle simulation', () => {
     const world = generateWorld(hashSeed(WORLD.defaultSeed));
     const firstFort = world.islands[1]!;
     const layout = fortLayout(firstFort);
-    const starter = { hull: 160, cannon: 1, salt: 1, barrel: 0, bats: 0, gunner: 'living', navigator: 'living' } as const;
+    const starter = { hull: 160, cannon: 1, salt: 1, barrel: 0, bats: 0, mortar: 0, gunner: 'living', navigator: 'living' } as const;
 
     it('a captain circling the first fort and firing both broadsides takes it', () => {
       const setup: BattleSetup = {
@@ -382,5 +388,164 @@ describe('combat spec: battle simulation', () => {
       const state = runBattle(setup, [[3, 0, 1, FLAG.retreat]]);
       expect(state.result).toMatchObject({ reason: 'retreat', ticks: 3, destruction: 0, stars: 0 });
     });
+  });
+});
+
+describe('fort-assault spec: battles', () => {
+  const fortIsland = fc
+    .record({
+      distance: fc.double({ noNaN: true, noDefaultInfinity: true, min: 0, max: 820 }),
+      angle: fc.double({ noNaN: true, noDefaultInfinity: true, min: -Math.PI, max: Math.PI }),
+      radius: fc.double({ noNaN: true, noDefaultInfinity: true, min: WORLD.minIslandRadius, max: WORLD.maxIslandRadius }),
+      seed: fc.integer({ min: 0, max: 0xffffffff }),
+    })
+    .map((r) => ({ id: 1, name: 'Test', kind: 'haunted' as const, x: Math.sin(r.angle) * r.distance, z: Math.cos(r.angle) * r.distance, radius: r.radius, seed: r.seed }));
+  const armed = fc.record({
+    hull: fc.integer({ min: 60, max: 300 }),
+    cannon: fc.constantFrom(1, 2, 3),
+    salt: fc.constantFrom(0, 1, 2, 3),
+    barrel: fc.constantFrom(0, 1, 2, 3),
+    bats: fc.constantFrom(0, 1, 2, 3),
+    mortar: fc.constantFrom(1, 2, 3),
+    gunner: crew,
+    navigator: crew,
+  });
+  // Real forts with treasure, powder and island ghosts, on a short clock so each run stays quick.
+  const fortBattle = fc
+    .record({ island: fortIsland, loadout: armed, seed: fc.integer({ min: 0, max: 0xffffffff }), seconds: fc.integer({ min: 25, max: 45 }) })
+    .map(({ island, loadout, seed, seconds }) => ({ ...fortSetup(island, loadout, seed), timeLimitSeconds: seconds }));
+  // Inputs that also fire the mortar and lock onto ids that may or may not exist. Never retreat.
+  // Each plan starts by sailing straight in (the ship starts pointing at the fort), so it fights.
+  const flags = fc.integer({ min: 0, max: 127 }).map((f) => f & ~FLAG.retreat);
+  const lockId = fc.integer({ min: 0, max: 30 });
+  const locking = fc
+    .record({
+      approach: fc.tuple(fc.integer({ min: 200, max: 420 }), fc.constant(0), fc.constant(2), flags, lockId),
+      rest: fc.array(fc.tuple(fc.integer({ min: 1, max: 150 }), fc.constantFrom(-1, 0, 1), fc.integer({ min: 1, max: 2 }), flags, lockId), { maxLength: 12 }),
+    })
+    .map(({ approach, rest }): Segment[] => [approach, ...rest]);
+  /** Where a target id stood when the guns aimed this tick, with its extra reach, or null if it couldn't be aimed at. */
+  const aimable = (prev: BattleState, next: BattleState, id: number): { x: number; z: number; reach: number } | null => {
+    const s = prev.structures.find((st) => st.id === id && !st.destroyed && st.type !== 'mine');
+    if (s) return { x: s.x, z: s.z, reach: s.type === 'keep' ? BATTLE.keepReach : 0 };
+    const i = prev.ghosts.findIndex((g) => g.id === id && !g.sunk);
+    if (i >= 0 && isRevealed(prev, prev.ghosts[i]!)) return { x: next.ghosts[i]!.ship.x, z: next.ghosts[i]!.ship.z, reach: 0 };
+    return null;
+  };
+  const arcCos = Math.cos(BATTLE.firingArc);
+
+  // Feature: fort-assault, Property 2. Validates: Requirements 2.2, 2.3
+  it('Property 2: locked targets are honoured', () => {
+    fc.assert(
+      fc.property(fortBattle, locking, (setup, plan) => {
+        let problem: string | null = null;
+        const { events } = playLive(setup, plan, (prev, next, input) => {
+          const lock = input.target ?? 0;
+          if (problem || !lock) return;
+          const s = next.player.ship;
+          for (const e of next.events) {
+            if (e.type !== 'fire' || e.side !== 'player' || (e.kind !== 'ball' && e.kind !== 'salt')) continue;
+            const t = aimable(prev, next, lock);
+            if (!t) continue;
+            const sign = (e.x - s.x) * Math.cos(s.heading) + (e.z - s.z) * -Math.sin(s.heading) > 0 ? 1 : -1;
+            const sx = Math.cos(s.heading) * sign;
+            const sz = -Math.sin(s.heading) * sign;
+            const d = Math.hypot(t.x - s.x, t.z - s.z);
+            const covered = d <= WEAPONS.cannon.range + t.reach && (d < 1e-6 || ((t.x - s.x) * sx + (t.z - s.z) * sz) / d >= arcCos);
+            if (covered && e.targetId !== lock) problem = `tick ${next.tick}: a broadside aimed at ${e.targetId}, not the lock ${lock}`;
+          }
+        });
+        expect(problem).toBeNull();
+        // Locks on nothing change nothing.
+        const nowhere = events.map((e) => [e[0], e[1], e[2], e[3], 999] as const);
+        const none = events.map((e) => [e[0], e[1], e[2], e[3], 0] as const);
+        expect(runBattle(setup, nowhere)).toEqual(runBattle(setup, none));
+      }),
+      RUNS,
+    );
+  }, SLOW);
+
+  // Feature: fort-assault, Property 3. Validates: Requirements 3.2, 3.3
+  it('Property 3: the mortar only fires at what it can reach', () => {
+    const cooldown = secondsToTicks(WEAPONS.mortar.cooldownSeconds);
+    fc.assert(
+      fc.property(fortBattle, locking, (setup, plan) => {
+        let problem: string | null = null;
+        let lastShot = -Infinity;
+        playLive(setup, plan, (prev, next) => {
+          for (const e of next.events) {
+            if (problem || e.type !== 'fire' || e.kind !== 'pumpkin') continue;
+            const t = e.targetId === null ? null : aimable(prev, next, e.targetId);
+            const d = t ? Math.hypot(t.x - next.player.ship.x, t.z - next.player.ship.z) : NaN;
+            if (!(d >= WEAPONS.mortar.minRange && d <= WEAPONS.mortar.range)) problem = `tick ${next.tick}: the mortar fired at ${e.targetId}, ${d} m away`;
+            if (next.tick - lastShot < cooldown) problem = `tick ${next.tick}: the mortar fired again after ${next.tick - lastShot} ticks`;
+            lastShot = next.tick;
+          }
+        });
+        expect(problem).toBeNull();
+      }),
+      RUNS,
+    );
+  }, SLOW);
+
+  // Feature: fort-assault, Property 4. Validates: Requirement 4.2
+  it('Property 4: powder stores blow up their neighbours', () => {
+    fc.assert(
+      fc.property(fortBattle, locking, (setup, plan) => {
+        let problem: string | null = null;
+        const blown = new Set<number>();
+        playLive(setup, plan, (prev, next) => {
+          for (const e of next.events) {
+            if (problem || e.type !== 'powder') continue;
+            if (blown.has(e.id)) problem = `powder store ${e.id} went off twice`;
+            blown.add(e.id);
+            const store = prev.structures.find((s) => s.id === e.id);
+            if (store?.type !== 'powder') problem = `a ${store?.type} went off like powder`;
+            prev.structures.forEach((other, k) => {
+              if (problem || other.id === e.id || other.type === 'mine' || other.destroyed || !store) return;
+              if (Math.hypot(other.x - store.x, other.z - store.z) > DEFENSES.powder.blastRadius) return;
+              const after = next.structures[k]!.hp;
+              if (after > Math.max(0, other.hp - DEFENSES.powder.blastDamage) + 1e-9) problem = `structure ${other.id} lost only ${other.hp - after} in the blast`;
+            });
+          }
+        });
+        expect(problem).toBeNull();
+      }),
+      RUNS,
+    );
+  }, SLOW);
+
+  // Feature: fort-assault, Property 5. Validates: Requirement 4.3
+  it("Property 5: bonus targets don't decide the battle", () => {
+    fc.assert(
+      fc.property(fortBattle, locking, (setup, plan) => {
+        const { state } = playLive(setup, plan);
+        const r = state.result!;
+        const plain = scoreIsland(state.structures.filter((s) => !isBonus(s.type)));
+        expect({ destruction: r.destruction, keepDestroyed: r.keepDestroyed, stars: r.stars }).toEqual(plain);
+        const fallen = state.structures.every((s) => s.type === 'mine' || isBonus(s.type) || s.destroyed);
+        expect(r.reason === 'destroyed').toBe(fallen);
+      }),
+      RUNS,
+    );
+  }, SLOW);
+
+  it('a powder store set off by the mortar damages the towers beside it', () => {
+    const island = { id: 1, name: 'Test', kind: 'haunted' as const, x: 0, z: 520, radius: 36, seed: 31 };
+    const setup = fortSetup(island, { hull: 900, cannon: 1, salt: 0, barrel: 0, bats: 0, mortar: 3, gunner: 'living', navigator: 'living' }, 3);
+    const powder = createBattle(setup).structures.find((s) => s.type === 'powder');
+    expect(powder).toBeDefined();
+    // Sail in, then sit 60 m off and lob pumpkins at the powder store.
+    let state = createBattle(setup);
+    let blasts = 0;
+    while (!state.result && blasts === 0) {
+      const d = Math.hypot(state.player.ship.x, state.player.ship.z);
+      state = stepBattle(state, { rudder: 0, sailLevel: d > 80 ? 1 : 0, flags: FLAG.mortar, target: powder!.id });
+      blasts += state.events.filter((e) => e.type === 'powder').length;
+    }
+    expect(blasts).toBe(1);
+    const near = state.structures.filter((s) => s.id !== powder!.id && s.type !== 'mine' && Math.hypot(s.x - powder!.x, s.z - powder!.z) <= DEFENSES.powder.blastRadius);
+    expect(near.length).toBeGreaterThan(0);
+    expect(near.every((s) => s.hp <= s.maxHp - DEFENSES.powder.blastDamage || s.destroyed)).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TICK_SECONDS, WEAPONS } from '../sim/balance';
 import { isRevealed, reloadTicks, revealRadius, secondsToTicks, timeLeft, type BattleState } from '../sim/battle';
+import { DEFENSE_NAMES } from '../sim/base';
 import type { BattleLayer } from '../render/battleLayer';
 import { el, setText } from './dom';
 import type { Projector } from './labels';
@@ -38,6 +39,18 @@ function setMeter(m: Meter, share: number, text: string, state: 'ready' | 'busy'
 
 const seconds = (ticks: number) => `${Math.ceil(ticks * TICK_SECONDS)} s`;
 
+/** What a target is called on the HUD. */
+export function targetName(state: BattleState, id: number): string | null {
+  const s = state.structures.find((st) => st.id === id);
+  if (s) {
+    if (s.type === 'vault') return 'Treasure vault';
+    if (s.type === 'powder') return 'Powder store';
+    const name = s.type === 'keep' ? (state.setup.island.living ? 'Lighthouse' : 'Ghost light') : DEFENSE_NAMES[s.type];
+    return `${name} (level ${s.level})`;
+  }
+  return state.ghosts.some((g) => g.id === id) ? 'Ghost ship' : null;
+}
+
 /** Everything the player needs during a fight, in words as well as bars. */
 export class BattleHud {
   private readonly root: HTMLElement;
@@ -51,13 +64,16 @@ export class BattleHud {
   private readonly ammo: HTMLElement;
   private readonly barrel: Meter;
   private readonly bats: Meter;
+  private readonly mortar: Meter;
+  private readonly target: HTMLElement;
   private readonly retreat: HTMLButtonElement;
   private readonly tip: HTMLElement;
-  private readonly bars: Array<{ root: HTMLElement; fill: HTMLElement }> = [];
+  private readonly bars: Array<{ hit: HTMLButtonElement; root: HTMLElement; fill: HTMLElement }> = [];
   private readonly point = { x: 0, y: 0, visible: false };
   private readonly anchor = new THREE.Vector3();
 
-  constructor(parent: HTMLElement, onRetreat: () => void) {
+  /** `onLock` hears a click on a health bar: lock that target. */
+  constructor(parent: HTMLElement, onRetreat: () => void, private readonly onLock: (id: number) => void = () => {}) {
     this.root = el('div', 'battle-hud');
     this.root.hidden = true;
 
@@ -84,18 +100,31 @@ export class BattleHud {
     this.starboard = meter(weapons, 'E', 'Starboard guns');
     this.barrel = meter(weapons, 'F', 'Witchfire');
     this.bats = meter(weapons, 'B', 'Bat Swarm');
+    this.mortar = meter(weapons, 'G', 'Mortar');
     this.ammo = el('div', 'bh-ammo');
-    panel.append(hull, weapons, this.ammo);
+    this.target = el('div', 'bh-target');
+    const lines = el('div', 'bh-lines');
+    lines.append(this.ammo, this.target);
+    panel.append(hull, weapons, lines);
 
     this.tip = el('div', 'bh-tip');
     const bars = el('div', 'bh-bars');
     for (let i = 0; i < 32; i++) {
+      // Each health bar is a button: click it to lock that target.
+      const hit = el('button', 'bh-hit');
+      hit.type = 'button';
+      hit.title = 'Lock this target (or press T)';
       const root = el('div', 'bh-hp');
       const fill = el('div', 'bh-hp-fill');
       root.append(fill);
-      root.hidden = true;
-      bars.append(root);
-      this.bars.push({ root, fill });
+      hit.append(root);
+      hit.hidden = true;
+      hit.addEventListener('click', () => {
+        const id = Number(hit.dataset.target);
+        if (id > 0) this.onLock(id);
+      });
+      bars.append(hit);
+      this.bars.push({ hit, root, fill });
     }
     this.root.append(bars, top, this.retreat, panel, this.tip);
     parent.append(this.root);
@@ -112,7 +141,7 @@ export class BattleHud {
     this.root.hidden = true;
   }
 
-  update(state: BattleState, layer: BattleLayer, projector: Projector, salt: boolean): void {
+  update(state: BattleState, layer: BattleLayer, projector: Projector, salt: boolean, lock = 0): void {
     const { loadout } = state.setup;
     const assault = state.setup.mode === 'assault';
     const left = Math.ceil(timeLeft(state));
@@ -144,6 +173,23 @@ export class BattleHud {
       !loadout.bats ? 'Not unlocked' : batsOut ? 'Bats out' : state.batsCooldown === 0 ? 'Ready' : seconds(state.batsCooldown),
       !loadout.bats ? 'locked' : state.batsCooldown === 0 ? 'ready' : 'busy',
     );
+    const mortarTotal = secondsToTicks(WEAPONS.mortar.cooldownSeconds);
+    setMeter(
+      this.mortar,
+      loadout.mortar ? 1 - state.mortarCooldown / mortarTotal : 0,
+      !loadout.mortar ? 'Not fitted' : state.mortarCooldown === 0 ? 'Ready' : seconds(state.mortarCooldown),
+      !loadout.mortar ? 'locked' : state.mortarCooldown === 0 ? 'ready' : 'busy',
+    );
+    const locked = lock ? targetName(state, lock) : null;
+    if (locked) {
+      const s = state.structures.find((st) => st.id === lock);
+      const g = state.ghosts.find((gh) => gh.id === lock);
+      const at = s ?? g?.ship;
+      const d = at ? Math.round(Math.hypot(at.x - p.ship.x, at.z - p.ship.z)) : 0;
+      setText(this.target, `T: locked on ${locked}, ${d} m. Broadsides and the mortar fire at it when they can.`);
+    } else setText(this.target, 'T: lock a target, or click its health bar. Unlocked guns fire at the nearest.');
+    this.target.classList.toggle('bh-target-on', locked !== null);
+
     const saltLoaded = salt && loadout.salt > 0;
     setText(this.ammo, loadout.salt ? `R: ${saltLoaded ? 'Salt Shot loaded (strong against ghosts)' : 'Cannonballs loaded (strong against towers)'}` : 'Cannonballs loaded');
     this.ammo.classList.toggle('bh-ammo-salt', saltLoaded);
@@ -163,24 +209,25 @@ export class BattleHud {
 
     // Health bars over structures and revealed ghosts.
     let n = 0;
-    const place = (anchor: THREE.Vector3, share: number, kind: string) => {
+    const place = (anchor: THREE.Vector3, share: number, kind: string, id: number) => {
       const bar = this.bars[n];
       if (!bar || !projector.project(anchor, this.point).visible) return;
-      bar.root.hidden = false;
-      bar.root.className = `bh-hp bh-hp-${kind}`;
-      bar.root.style.transform = `translate(${this.point.x.toFixed(1)}px, ${this.point.y.toFixed(1)}px) translate(-50%, -50%)`;
+      bar.hit.hidden = false;
+      bar.hit.dataset.target = String(id);
+      bar.root.className = `bh-hp bh-hp-${kind}${id === lock ? ' bh-hp-locked' : ''}`;
+      bar.hit.style.transform = `translate(${this.point.x.toFixed(1)}px, ${this.point.y.toFixed(1)}px) translate(-50%, -50%)`;
       bar.fill.style.transform = `scaleX(${share.toFixed(3)})`;
       n++;
     };
     for (const s of state.structures) {
       if (s.destroyed || s.type === 'mine') continue;
       if (s.hp >= s.maxHp && assault === false) continue;
-      place(layer.structureAnchor(state, s.id, this.anchor), s.hp / s.maxHp, assault ? 'enemy' : 'ours');
+      place(layer.structureAnchor(state, s.id, this.anchor), s.hp / s.maxHp, s.type === 'vault' ? 'gold' : assault ? 'enemy' : 'ours', s.id);
     }
     state.ghosts.forEach((g, i) => {
       if (g.sunk || !isRevealed(state, g)) return;
-      place(layer.ghostAnchor(i, this.anchor), g.hp / g.maxHp, 'ghost');
+      place(layer.ghostAnchor(i, this.anchor), g.hp / g.maxHp, 'ghost', g.id);
     });
-    for (let i = n; i < this.bars.length; i++) this.bars[i]!.root.hidden = true;
+    for (let i = n; i < this.bars.length; i++) this.bars[i]!.hit.hidden = true;
   }
 }

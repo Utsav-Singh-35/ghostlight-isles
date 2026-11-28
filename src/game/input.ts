@@ -8,7 +8,7 @@ const PORT = ['KeyA', 'ArrowLeft'];
 const STARBOARD = ['KeyD', 'ArrowRight'];
 const SAILING_KEYS = new Set([...RAISE, ...LOWER, ...PORT, ...STARBOARD]);
 /** Keys the game uses, so the browser doesn't scroll or switch focus on them. */
-const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'Space', 'Tab']);
+const CAPTURED = new Set([...SAILING_KEYS, 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyB', 'KeyG', 'KeyT', 'Space', 'Tab']);
 
 /** Keyboard state for sailing and battles, plus one-shot key handlers for menus. */
 export class Keyboard {
@@ -20,6 +20,8 @@ export class Keyboard {
   sailLevel = 0;
   /** True while Salt Shot is loaded instead of cannonballs. */
   salt = false;
+  /** The locked target's id in battle, or 0. */
+  lock = 0;
   /** While false, sailing and battle keys are ignored (menus and the title screen). */
   enabled = true;
 
@@ -90,11 +92,12 @@ export class Keyboard {
       if (this.held.has('KeyE')) flags |= FLAG.starboard;
       if (this.held.has('KeyF')) flags |= FLAG.barrel;
       if (this.held.has('KeyB')) flags |= FLAG.bats;
+      if (this.held.has('KeyG')) flags |= FLAG.mortar;
     }
     if (this.salt) flags |= FLAG.salt;
     if (this.retreat) flags |= FLAG.retreat;
     this.retreat = false;
-    return { rudder, sailLevel, flags };
+    return { rudder, sailLevel, flags, target: this.lock };
   }
 
   dispose(): void {

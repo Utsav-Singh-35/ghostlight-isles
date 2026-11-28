@@ -2,6 +2,7 @@ import { REWARDS, WORLD } from '../sim/balance';
 import { runBattle } from '../sim/battle';
 import { capsFor, earn } from '../sim/economy';
 import { fortDifficulty, fortSetup } from '../sim/layout';
+import { captureRewards, type RewardLine } from '../sim/captureRewards';
 import { addReport, collectTribute, loadoutOf, publicProfile, type PendingBattle, type Profile } from '../sim/profile';
 import { hashSeed } from '../sim/rng';
 import { generateWorld } from '../sim/world';
@@ -41,19 +42,24 @@ route('POST', '/captures/finish', true, async ({ ctx, body, profile }) => {
   const islandId = Number(pending.target);
   const island = STANDARD_WORLD.islands[islandId]!;
   // The server's own replay decides; the client's result is never trusted.
-  const result = runBattle(pending.setup, body.inputs).result!;
+  const replay = runBattle(pending.setup, body.inputs);
+  const result = replay.result!;
   const won = result.keepDestroyed;
 
   let next: Profile = afterBattle({ ...profile, battle: null }, result, pending.setup.seed);
-  const rewards = { gold: 0, ectoplasm: 0 };
+  const rewards: { gold: number; ectoplasm: number; lines: readonly RewardLine[]; full: boolean } = { gold: 0, ectoplasm: 0, lines: [], full: false };
   if (won && !next.captured.includes(islandId)) {
     const level = fortDifficulty(island);
     // Settle tribute for the islands already held before the new one starts paying.
     next = collectTribute(next, ctx.now()).profile;
+    // The reward for how the battle went: guns silenced, time left, ghosts sunk, treasure taken.
+    const earned = captureRewards(replay, level);
     const before = next.resources;
-    const resources = earn(before, { gold: REWARDS.captureGold[level - 1], ectoplasm: REWARDS.captureEctoplasm[level - 1] }, capsFor(next.homeLevel));
+    const resources = earn(before, { gold: earned.gold, ectoplasm: earned.ectoplasm }, capsFor(next.homeLevel));
     rewards.gold = resources.gold - before.gold;
     rewards.ectoplasm = resources.ectoplasm - before.ectoplasm;
+    rewards.lines = earned.lines;
+    rewards.full = rewards.gold < earned.gold || rewards.ectoplasm < earned.ectoplasm;
     next = {
       ...next,
       resources,

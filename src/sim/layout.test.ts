@@ -7,7 +7,7 @@ import { fortLevelAt, generateWorld, type Island } from './world';
 
 const seed = fc.integer({ min: 0, max: 0xffffffff });
 const distance = fc.double({ noNaN: true, noDefaultInfinity: true, min: 0, max: WORLD.radius });
-const starter: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 0, bats: 0, gunner: 'living', navigator: 'living' };
+const starter: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 0, bats: 0, mortar: 0, gunner: 'living', navigator: 'living' };
 
 /** A haunted island anywhere in the sea, of any size the world can make. */
 const island: fc.Arbitrary<Island> = fc

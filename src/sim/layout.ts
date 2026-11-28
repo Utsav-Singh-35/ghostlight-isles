@@ -17,12 +17,27 @@ export interface PlacedDefense {
   readonly slot: number;
 }
 
+/** Bonus targets on haunted forts: a treasure vault pays out, a powder store blows up its neighbours. */
+export type BonusType = 'vault' | 'powder';
+export const BONUS_TYPES: readonly BonusType[] = ['vault', 'powder'];
+
+export function isBonus(type: string): type is BonusType {
+  return type === 'vault' || type === 'powder';
+}
+
+export interface PlacedExtra {
+  readonly type: BonusType;
+  /** A place on the treasure ring, between two tower slots. */
+  readonly slot: number;
+}
+
 export interface IslandLayout {
   /** Keep level, 1 to 3. */
   readonly level: DefenseLevel;
   readonly slotCount: number;
   readonly mineSlotCount: number;
   readonly defenses: readonly PlacedDefense[];
+  readonly extras: readonly PlacedExtra[];
 }
 
 export interface Point {
@@ -35,6 +50,26 @@ export function slotPosition(radius: number, slot: number, slotCount: number): P
   const angle = (slot / Math.max(1, slotCount)) * TAU + 0.3;
   const r = radius * LAYOUT.slotRing;
   return { x: Math.sin(angle) * r, z: Math.cos(angle) * r };
+}
+
+/** Where a treasure vault or powder store stands: on the treasure ring, halfway between two tower slots. */
+export function extraPosition(radius: number, slot: number, slotCount: number): Point {
+  const angle = ((slot + 0.5) / Math.max(1, slotCount)) * TAU + 0.3;
+  const r = radius * LAYOUT.treasureRing;
+  return { x: Math.sin(angle) * r, z: Math.cos(angle) * r };
+}
+
+/** Keeps only bonus targets of known types on distinct places that exist. */
+export function cleanExtras(extras: readonly PlacedExtra[], slotCount: number): PlacedExtra[] {
+  const used = new Set<number>();
+  const out: PlacedExtra[] = [];
+  for (const e of extras) {
+    const slot = Math.round(e.slot);
+    if (!isBonus(e.type) || !Number.isInteger(slot) || slot < 0 || slot >= slotCount || used.has(slot)) continue;
+    used.add(slot);
+    out.push({ type: e.type, slot });
+  }
+  return out;
 }
 
 /** Where a mine floats, relative to the island's centre: in the water just off the shore. */
@@ -88,7 +123,12 @@ export function fortLayout(island: Island): IslandLayout {
     return { type, level: toLevel(low + Math.floor(rng.next() * (high - low + 1))), slot };
   });
   for (let m = 0; m < mines; m++) defenses.push({ type: 'mine', level: toLevel(low), slot: m });
-  return { level: toLevel(FORTS.keepLevel[i]!), slotCount, mineSlotCount: Math.max(3, mines), defenses };
+  // Treasure vaults and powder stores, between the towers.
+  const places = rng.shuffle(Array.from({ length: slotCount }, (_, k) => k));
+  const extras: PlacedExtra[] = [];
+  for (let v = 0; v < FORTS.vaults[i]!; v++) extras.push({ type: 'vault', slot: places[extras.length]! });
+  for (let p = 0; p < FORTS.powderStores[i]!; p++) extras.push({ type: 'powder', slot: places[extras.length]! });
+  return { level: toLevel(FORTS.keepLevel[i]!), slotCount, mineSlotCount: Math.max(3, mines), defenses, extras };
 }
 
 /** The battle for a haunted island's fort at its level: towers, mines, keep, the island's ghosts and the dawn clock. */
@@ -104,6 +144,7 @@ export function fortSetup(island: Island, loadout: Loadout, seed: number): Battl
     loadout,
     fleet: { count: ghosts.count, level: ghosts.level },
     timeLimitSeconds: FORTS.timeLimitSeconds[i]!,
+    extras: layout.extras,
   };
 }
 
@@ -121,5 +162,5 @@ export function rivalLayout(seed: number, homeLevel: DefenseLevel): IslandLayout
   });
   const mines = rng.int(0, mineSlotCount - 1);
   for (let m = 0; m < mines; m++) defenses.push({ type: 'mine', level: toLevel(homeLevel), slot: m });
-  return { level: homeLevel, slotCount, mineSlotCount, defenses };
+  return { level: homeLevel, slotCount, mineSlotCount, defenses, extras: [] };
 }

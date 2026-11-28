@@ -14,7 +14,20 @@ import {
   type ShotKind,
   type TargetClass,
 } from './balance';
-import { cleanDefenses, mineSlotPosition, slotPosition, toLevel, type DefenseLevel, type DefenseType, type PlacedDefense } from './layout';
+import {
+  cleanDefenses,
+  cleanExtras,
+  extraPosition,
+  isBonus,
+  mineSlotPosition,
+  slotPosition,
+  toLevel,
+  type BonusType,
+  type DefenseLevel,
+  type DefenseType,
+  type PlacedDefense,
+  type PlacedExtra,
+} from './layout';
 import { TAU, angleDelta, clamp, finiteOr, wrapAngle } from './math';
 import { createRng, type Rng } from './rng';
 import { stepShip, type ShipInput, type ShipState } from './ship';
@@ -33,6 +46,8 @@ export interface Loadout {
   readonly salt: number;
   readonly barrel: number;
   readonly bats: number;
+  /** The Pumpkin Mortar: 0 (not fitted) to 3. */
+  readonly mortar: number;
   readonly gunner: CrewState;
   readonly navigator: CrewState;
 }
@@ -56,23 +71,29 @@ export interface BattleSetup {
   readonly loadout: Loadout;
   readonly fleet: { readonly count: number; readonly level: number };
   readonly timeLimitSeconds: number;
+  /** A haunted fort's treasure vaults and powder stores. */
+  readonly extras?: readonly PlacedExtra[];
 }
 
 /** Input flag bits. */
-export const FLAG = { port: 1, starboard: 2, barrel: 4, bats: 8, salt: 16, retreat: 32 } as const;
-const ALL_FLAGS = 63;
+export const FLAG = { port: 1, starboard: 2, barrel: 4, bats: 8, salt: 16, retreat: 32, mortar: 64 } as const;
+const ALL_FLAGS = 127;
+/** Highest structure or ship id a lock can name. */
+const MAX_TARGET_ID = 1000;
 
 export interface BattleInput {
   readonly rudder: number;
   readonly sailLevel: number;
   readonly flags: number;
+  /** The locked target's id, or 0 (or left out) for none. */
+  readonly target?: number;
 }
 
-/** A change in the player's input: [tick it applies from, rudder, sail level, flags]. */
-export type InputEvent = readonly [tick: number, rudder: number, sailLevel: number, flags: number];
+/** A change in the player's input: [tick it applies from, rudder, sail level, flags, locked target]. Old four-number events have no lock. */
+export type InputEvent = readonly [tick: number, rudder: number, sailLevel: number, flags: number, target?: number];
 
 /** The input a battle starts with, before the first event. */
-export const DEFAULT_INPUT: BattleInput = { rudder: 0, sailLevel: 1, flags: 0 };
+export const DEFAULT_INPUT: BattleInput = { rudder: 0, sailLevel: 1, flags: 0, target: 0 };
 
 export interface Combatant {
   readonly id: number;
@@ -94,7 +115,7 @@ export interface Combatant {
 
 export interface Structure {
   readonly id: number;
-  readonly type: DefenseType | 'keep';
+  readonly type: DefenseType | 'keep' | BonusType;
   readonly level: DefenseLevel;
   /** Slot index, or −1 for the keep. */
   readonly slot: number;
@@ -137,9 +158,10 @@ export interface FireZone {
 export type BattleEvent =
   | { readonly type: 'fire'; readonly kind: ShotType; readonly side: Side; readonly x: number; readonly z: number; readonly sourceId: number; readonly targetId: number | null }
   | { readonly type: 'land'; readonly kind: ShotType; readonly x: number; readonly z: number; readonly hitId: number | null; readonly splash: number }
-  | { readonly type: 'destroyed'; readonly id: number; readonly structure: DefenseType | 'keep'; readonly x: number; readonly z: number }
+  | { readonly type: 'destroyed'; readonly id: number; readonly structure: DefenseType | 'keep' | BonusType; readonly x: number; readonly z: number }
   | { readonly type: 'sunk'; readonly id: number; readonly kind: 'player' | 'ghost'; readonly x: number; readonly z: number }
   | { readonly type: 'mine'; readonly id: number; readonly x: number; readonly z: number }
+  | { readonly type: 'powder'; readonly id: number; readonly x: number; readonly z: number }
   | { readonly type: 'bats' };
 
 export type BattleEndReason = 'destroyed' | 'sunk' | 'retreat' | 'time' | 'repelled' | 'overrun' | 'dawn';
@@ -173,6 +195,7 @@ export interface BattleState {
   readonly fires: readonly FireZone[];
   readonly barrelCooldown: number;
   readonly batsCooldown: number;
+  readonly mortarCooldown: number;
   /** Bats reveal everything while the tick is below this. */
   readonly revealUntil: number;
   readonly nextId: number;
@@ -218,6 +241,7 @@ export function sanitizeSetup(raw: BattleSetup): BattleSetup {
       salt: weaponLevel(raw.loadout.salt),
       barrel: weaponLevel(raw.loadout.barrel),
       bats: weaponLevel(raw.loadout.bats),
+      mortar: weaponLevel(raw.loadout.mortar),
       gunner: crewState(raw.loadout.gunner),
       navigator: crewState(raw.loadout.navigator),
     },
@@ -226,6 +250,8 @@ export function sanitizeSetup(raw: BattleSetup): BattleSetup {
       level: clamp(Math.round(finiteOr(raw.fleet.level, 1)), 1, GHOSTS.maxLevel),
     },
     timeLimitSeconds: clamp(finiteOr(raw.timeLimitSeconds, BATTLE.timeLimitSeconds), BATTLE.minTimeLimitSeconds, BATTLE.maxTimeLimitSeconds),
+    // Only haunted forts have treasure and powder.
+    extras: raw.island.living === true ? [] : cleanExtras(Array.isArray(raw.extras) ? raw.extras : [], slotCount),
   };
 }
 
@@ -310,6 +336,12 @@ export function createBattle(rawSetup: BattleSetup): BattleState {
     const hp = d.type === 'mine' ? 1 : at(DEFENSES[d.type].hp, d.level);
     structures.push({ id: nextId++, type: d.type, level: d.level, slot: d.slot, x: p.x, z: p.z, hp, maxHp: hp, cooldown: secondsToTicks(0.4 + rng.next()), destroyed: false });
   }
+  // Bonus targets come after every defense, so adding them never moves a defense's id.
+  for (const e of setup.extras ?? []) {
+    const p = extraPosition(island.radius, e.slot, island.slotCount);
+    const hp = at(DEFENSES[e.type].hp, island.level);
+    structures.push({ id: nextId++, type: e.type, level: toLevel(island.level), slot: e.slot, x: p.x, z: p.z, hp, maxHp: hp, cooldown: 0, destroyed: false });
+  }
 
   const angle = rng.range(-Math.PI, Math.PI);
   const assault = setup.mode === 'assault';
@@ -385,6 +417,7 @@ export function createBattle(rawSetup: BattleSetup): BattleState {
     fires: [],
     barrelCooldown: 0,
     batsCooldown: 0,
+    mortarCooldown: 0,
     revealUntil: 0,
     nextId,
     events: [],
@@ -417,11 +450,12 @@ function guardSteer(ghost: Combatant, player: Combatant, ring: number): ShipInpu
 }
 
 /** Clamps one tick of input into range. */
-export function sanitizeBattleInput(input: BattleInput): BattleInput {
+export function sanitizeBattleInput(input: BattleInput): Required<BattleInput> {
   return {
     rudder: clamp(finiteOr(input.rudder, 0), -1, 1),
     sailLevel: clamp(Math.round(finiteOr(input.sailLevel, 1)), 0, 2),
     flags: Math.round(clamp(finiteOr(input.flags, 0), 0, ALL_FLAGS)) & ALL_FLAGS,
+    target: clamp(Math.round(finiteOr(input.target ?? 0, 0)), 0, MAX_TARGET_ID),
   };
 }
 
@@ -527,6 +561,7 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
   let nextId = state.nextId;
   let barrelCooldown = Math.max(0, state.barrelCooldown - 1);
   let batsCooldown = Math.max(0, state.batsCooldown - 1);
+  let mortarCooldown = Math.max(0, state.mortarCooldown - 1);
   let revealUntil = state.revealUntil;
 
   const launch = (shot: Omit<Shot, 'id'>) => {
@@ -547,16 +582,19 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
     const balls = at(WEAPONS.cannon.balls, loadout.cannon);
     const reload = reloadTicks(loadout);
     const candidates = targetsOf('player').filter((t) => t.cls !== 'ghost' || visible.has(t.id));
+    // The locked target counts only while it stands and can be seen.
+    const locked = input.target ? (candidates.find((t) => t.id === input.target) ?? null) : null;
 
     const broadside = (sign: 1 | -1) => {
       // Port is (cos h, −sin h); starboard is the opposite.
       const sx = Math.cos(s.heading) * sign;
       const sz = -Math.sin(s.heading) * sign;
-      const target = nearest(candidates, s.x, s.z, (t, d) => {
+      const covers = (t: Target, d: number) => {
         if (d > WEAPONS.cannon.range + t.reach) return false;
         if (d < 1e-6) return true;
         return ((t.x - s.x) * sx + (t.z - s.z) * sz) / d >= ARC_COS;
-      });
+      };
+      const target = locked && covers(locked, Math.hypot(locked.x - s.x, locked.z - s.z)) ? locked : nearest(candidates, s.x, s.z, covers);
       for (let i = 0; i < balls; i++) {
         const along = (i - (balls - 1) / 2) * WEAPONS.cannon.spacing;
         const fromX = s.x + fx * along + sx * 2;
@@ -615,12 +653,40 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
       batsCooldown = secondsToTicks(WEAPONS.bats.cooldownSeconds);
       events.push({ type: 'bats' });
     }
+    // The Pumpkin Mortar: at the lock if it's in reach, else at the nearest structure in reach.
+    if (input.flags & FLAG.mortar && loadout.mortar > 0 && mortarCooldown === 0) {
+      const { minRange, range } = WEAPONS.mortar;
+      const reachable = (t: Target) => {
+        const d = Math.hypot(t.x - s.x, t.z - s.z);
+        return d >= minRange && d <= range;
+      };
+      const target = locked && reachable(locked) ? locked : nearest(candidates, s.x, s.z, (t) => t.cls === 'structure' && reachable(t));
+      if (target) {
+        const level = loadout.mortar;
+        launch({
+          kind: 'pumpkin',
+          side: 'player',
+          fromX: s.x,
+          fromZ: s.z,
+          toX: target.x + rng.range(-WEAPONS.mortar.spread, WEAPONS.mortar.spread),
+          toZ: target.z + rng.range(-WEAPONS.mortar.spread, WEAPONS.mortar.spread),
+          launchTick: tick,
+          landTick: tick + secondsToTicks(WEAPONS.mortar.flightSeconds),
+          damage: at(WEAPONS.mortar.damage, level),
+          splash: at(WEAPONS.mortar.splash, level),
+          level,
+          pierce: false,
+        });
+        mortarCooldown = secondsToTicks(WEAPONS.mortar.cooldownSeconds);
+        events.push({ type: 'fire', kind: 'pumpkin', side: 'player', x: s.x, z: s.z, sourceId: player.id, targetId: target.id });
+      }
+    }
   }
 
   // 3. The island's defenses fire.
   const islandTargets = targetsOf('island');
   for (const st of structures) {
-    if (st.destroyed || st.type === 'keep' || st.type === 'mine') continue;
+    if (st.destroyed || st.type === 'keep' || st.type === 'mine' || isBonus(st.type)) continue;
     st.cooldown = Math.max(0, st.cooldown - 1);
     if (st.cooldown > 0) continue;
     const type = st.type;
@@ -769,11 +835,23 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
     events.push({ type: 'mine', id: m.id, x: m.x, z: m.z });
   }
 
-  // 8. Destroyed structures and sunk ships.
-  for (const st of structures) {
-    if (!st.destroyed && st.hp <= 0) {
+  // 8. Destroyed structures; a powder store that falls blows up everything near it, which can
+  // set off other powder stores in the same tick.
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const st of structures) {
+      if (st.destroyed || st.hp > 0) continue;
       st.destroyed = true;
       events.push({ type: 'destroyed', id: st.id, structure: st.type, x: st.x, z: st.z });
+      if (st.type !== 'powder') continue;
+      changed = true;
+      events.push({ type: 'powder', id: st.id, x: st.x, z: st.z });
+      const { blastRadius, blastDamage, shipDamage } = DEFENSES.powder;
+      for (const other of structures) {
+        if (other.destroyed || other.type === 'mine') continue;
+        if (Math.hypot(other.x - st.x, other.z - st.z) <= blastRadius) other.hp = Math.max(0, other.hp - blastDamage);
+      }
+      if (!player.sunk && Math.hypot(player.ship.x - st.x, player.ship.z - st.z) <= blastRadius) player.hp = Math.max(0, player.hp - shipDamage);
     }
   }
   for (const c of [player, ...ghosts]) {
@@ -795,16 +873,17 @@ export function stepBattle(state: BattleState, rawInput: BattleInput): BattleSta
     fires,
     barrelCooldown,
     batsCooldown,
+    mortarCooldown,
     revealUntil,
     nextId,
     events,
     result: null,
   };
 
-  // 9. Has the battle ended?
+  // 9. Has the battle ended? Treasure vaults and powder stores don't count.
   let reason: BattleEndReason | null = null;
   if (assault) {
-    if (standing.length === 0 || structures.every((s) => s.type === 'mine' || s.destroyed)) reason = 'destroyed';
+    if (structures.every((s) => s.type === 'mine' || isBonus(s.type) || s.destroyed)) reason = 'destroyed';
     else if (player.sunk) reason = 'sunk';
     else if (tick >= state.limit) reason = 'time';
   } else if (structures.some((s) => s.type === 'keep' && s.destroyed)) {
@@ -823,7 +902,7 @@ export function scoreIsland(structures: readonly Structure[]): { destruction: nu
   let destroyed = 0;
   let keepDestroyed = false;
   for (const s of structures) {
-    if (s.type === 'mine') continue;
+    if (s.type === 'mine' || isBonus(s.type)) continue;
     const weight = s.type === 'keep' ? BATTLE.keepWeight : 1;
     total += weight;
     if (s.destroyed) {
@@ -856,7 +935,7 @@ function finish(state: BattleState, reason: BattleEndReason): BattleState {
 }
 
 function sameInput(a: BattleInput, b: BattleInput): boolean {
-  return a.rudder === b.rudder && a.sailLevel === b.sailLevel && a.flags === b.flags;
+  return a.rudder === b.rudder && a.sailLevel === b.sailLevel && a.flags === b.flags && (a.target ?? 0) === (b.target ?? 0);
 }
 
 /**
@@ -865,7 +944,7 @@ function sameInput(a: BattleInput, b: BattleInput): boolean {
  */
 export function recordInput(events: InputEvent[], last: BattleInput, tick: number, rawInput: BattleInput): BattleInput {
   const input = sanitizeBattleInput(rawInput);
-  if (!sameInput(input, last)) events.push([tick, input.rudder, input.sailLevel, input.flags]);
+  if (!sameInput(input, last)) events.push([tick, input.rudder, input.sailLevel, input.flags, input.target]);
   return input;
 }
 
@@ -875,12 +954,13 @@ export function sanitizeEvents(raw: unknown): InputEvent[] {
   const limit = secondsToTicks(BATTLE.maxTimeLimitSeconds);
   const out: InputEvent[] = [];
   for (const entry of raw.slice(0, BATTLE.maxInputEvents)) {
-    if (!Array.isArray(entry) || entry.length !== 4) continue;
-    const [tick, rudder, sailLevel, flags] = entry as unknown[];
-    if (typeof tick !== 'number' || typeof rudder !== 'number' || typeof sailLevel !== 'number' || typeof flags !== 'number') continue;
+    // Four numbers (no lock) or five (with the locked target).
+    if (!Array.isArray(entry) || (entry.length !== 4 && entry.length !== 5)) continue;
+    const [tick, rudder, sailLevel, flags, target = 0] = entry as unknown[];
+    if (typeof tick !== 'number' || typeof rudder !== 'number' || typeof sailLevel !== 'number' || typeof flags !== 'number' || typeof target !== 'number') continue;
     if (!Number.isFinite(tick)) continue;
-    const input = sanitizeBattleInput({ rudder, sailLevel, flags });
-    out.push([clamp(Math.round(tick), 1, limit), input.rudder, input.sailLevel, input.flags]);
+    const input = sanitizeBattleInput({ rudder, sailLevel, flags, target });
+    out.push([clamp(Math.round(tick), 1, limit), input.rudder, input.sailLevel, input.flags, input.target]);
   }
   // A stable sort keeps the original order of events on the same tick; the last one wins.
   return out.sort((a, b) => a[0] - b[0]);
@@ -896,7 +976,7 @@ export function runBattle(setup: BattleSetup, rawEvents: unknown): BattleState {
     const tick = state.tick + 1;
     while (i < events.length && events[i]![0] <= tick) {
       const e = events[i]!;
-      input = { rudder: e[1], sailLevel: e[2], flags: e[3] };
+      input = { rudder: e[1], sailLevel: e[2], flags: e[3], target: e[4] ?? 0 };
       i++;
     }
     state = stepBattle(state, input);

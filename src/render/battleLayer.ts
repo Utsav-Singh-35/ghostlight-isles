@@ -4,21 +4,22 @@ import { TAU, clamp, lerp, lerpAngle } from '../sim/math';
 import { createRng } from '../sim/rng';
 import type { Island } from '../sim/world';
 import { Bursts } from './bursts';
-import { addFort, blockedByFort, flameGeometry, keepScale } from './fortMeshes';
+import { addFort, blockedByFort, flameGeometry, fortStyle, keepScale, type FortStyle } from './fortMeshes';
 import { buildTerrain, deadTreeGeometry, rockGeometry, tombstoneGeometry } from './islands';
 import { MeshBuilder, placed, vertexColorMaterial, type Vec3 } from './meshBuilder';
+import type { Shore } from './ocean';
 import { PALETTE } from './palette';
 import { createGhostShipModel, type GhostShipModel } from './shipMesh';
 import { GLOW_HEIGHT, StructureSet, createKeepMesh, type StructureView } from './structureMeshes';
 import { sampleWaveHeight } from './waves';
 
-/** Boulders along the shore, and graves and dead trees on haunted islands, clear of towers and walls. Visual only. */
-function scatterProps(state: BattleState, heightAt: (x: number, z: number) => number, material: THREE.Material, walled: boolean): THREE.InstancedMesh[] {
+/** Boulders along the shore, and graves and dead trees on haunted islands, clear of towers and of the fort (`walls`, if any). Visual only. */
+function scatterProps(state: BattleState, heightAt: (x: number, z: number) => number, material: THREE.Material, walls: FortStyle | null): THREE.InstancedMesh[] {
   const { island } = state.setup;
   const rng = createRng(island.seed ^ 0x9e37);
   const r = island.radius;
   const towers = state.structures.filter((s) => s.type !== 'keep' && s.type !== 'mine');
-  const clear = (x: number, z: number, d: number) => d > 7 && (!walled || !blockedByFort(d, r)) && towers.every((t) => Math.hypot(t.x - x, t.z - z) > 4.5);
+  const clear = (x: number, z: number, d: number) => d > 7 && (!walls || !blockedByFort(d, r, walls)) && towers.every((t) => Math.hypot(t.x - x, t.z - z) > 4.5);
   const polar = (fraction: number): [number, number, number] => {
     const a = rng.range(0, TAU);
     const d = r * fraction;
@@ -63,8 +64,8 @@ function scatterProps(state: BattleState, heightAt: (x: number, z: number) => nu
   return meshes;
 }
 
-const LAUNCH_HEIGHT: Record<Shot['kind'], number> = { ball: 2.6, salt: 2.6, tower: 4.4, lantern: 6.8, stone: 3.8, bolt: 3.0, barrel: 3.0, fire: 0, mine: 0 };
-const ARC: Record<Shot['kind'], number> = { ball: 2.2, salt: 2.2, tower: 3, lantern: 2, stone: 16, bolt: 1, barrel: 6, fire: 0, mine: 0 };
+const LAUNCH_HEIGHT: Record<Shot['kind'], number> = { ball: 2.6, salt: 2.6, tower: 4.4, lantern: 6.8, stone: 3.8, bolt: 3.0, barrel: 3.0, fire: 0, mine: 0, pumpkin: 3.4 };
+const ARC: Record<Shot['kind'], number> = { ball: 2.2, salt: 2.2, tower: 3, lantern: 2, stone: 16, bolt: 1, barrel: 6, fire: 0, mine: 0, pumpkin: 24 };
 
 /** Draws one battle: the island, its defenses, ghost ships, shots, fire and explosions. Reads battle state only. */
 export class BattleLayer {
@@ -73,6 +74,8 @@ export class BattleLayer {
   /** Where the keep's lantern burns, for lights and the camera. */
   readonly keepLantern: THREE.Vector3;
   readonly living: boolean;
+  /** The island's shore, for surf on the sea. */
+  readonly shore: Shore;
   private readonly radius: number;
   private readonly terrain: THREE.Mesh;
   private readonly terrainMaterial = vertexColorMaterial();
@@ -98,6 +101,12 @@ export class BattleLayer {
   private readonly flameMaterial = new THREE.MeshBasicMaterial({ color: this.flameColor.clone().multiplyScalar(1.5), toneMapped: false });
   private readonly propMaterial = vertexColorMaterial();
   private readonly props: THREE.InstancedMesh[];
+  /** The locked target's id, and the warm ring that marks it. */
+  private lock = 0;
+  private readonly lockRing = new THREE.Mesh(
+    new THREE.RingGeometry(2.7, 3.3, 40).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.lantern).multiplyScalar(1.6), transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+  );
 
   /** `fortLevel` (1 to 5) draws a haunted fort's walls; 0 draws none, as on living islands. */
   constructor(state: BattleState, quality: 'high' | 'low', fortLevel = 0) {
@@ -106,7 +115,8 @@ export class BattleLayer {
     this.radius = island.radius;
     this.living = island.living;
     const spec: Island = { id: 0, name: 'battle', kind: island.living ? 'home' : 'haunted', x: 0, z: 0, radius: island.radius, seed: island.seed };
-    const { geometry, peak } = buildTerrain(spec, createRng(island.seed));
+    const { geometry, peak, coast } = buildTerrain(spec, createRng(island.seed));
+    this.shore = { x: 0, z: 0, radius: island.radius, coast };
     this.terrain = new THREE.Mesh(geometry, this.terrainMaterial);
     this.terrain.updateMatrixWorld();
     this.group.add(this.terrain);
@@ -120,9 +130,10 @@ export class BattleLayer {
       return hit ? hit.point.y : 0.5;
     };
 
-    // Stronger forts have a bigger keep.
-    this.keep = createKeepMesh(island.living, keepScale(island.level));
+    // Stronger forts have a bigger keep, and a haunted keep turns to face the attacker.
+    this.keep = createKeepMesh(island.living, keepScale(island.level), Math.max(1, fortLevel));
     this.keep.mesh.position.set(0, peak - 0.6, 0);
+    if (!island.living) this.keep.mesh.rotation.y = Math.atan2(state.player.ship.x, state.player.ship.z);
     this.group.add(this.keep.mesh);
     this.keepLantern = new THREE.Vector3(0, peak - 0.6 + this.keep.lanternHeight, 0);
 
@@ -134,15 +145,18 @@ export class BattleLayer {
 
     if (!island.living && fortLevel > 0) {
       const walls = new MeshBuilder();
-      this.flamePoints = addFort(walls, island.radius, fortLevel, island.seed, heightAt);
+      this.flamePoints = addFort(walls, island.radius, fortLevel, island.seed, heightAt).flames;
       this.fort = new THREE.Mesh(walls.build(), this.terrainMaterial);
       this.fort.name = 'battle-fort';
       this.group.add(this.fort);
       this.flames = new THREE.Mesh(flameGeometry(this.flamePoints), this.flameMaterial);
       this.group.add(this.flames);
     }
-    this.props = scatterProps(state, heightAt, this.propMaterial, !island.living && fortLevel > 0);
+    this.props = scatterProps(state, heightAt, this.propMaterial, !island.living && fortLevel > 0 ? fortStyle(fortLevel, island.seed) : null);
     for (const mesh of this.props) this.group.add(mesh);
+    this.lockRing.visible = false;
+    this.lockRing.renderOrder = 2;
+    this.group.add(this.lockRing);
 
     state.ghosts.forEach((g, i) => {
       const model = createGhostShipModel(i);
@@ -182,7 +196,7 @@ export class BattleLayer {
   structureAnchor(state: BattleState, id: number, out: THREE.Vector3): THREE.Vector3 {
     const s = state.structures.find((st) => st.id === id);
     if (!s) return out.set(0, -1000, 0);
-    if (s.type === 'keep') return out.copy(this.keepLantern).setY(this.keepLantern.y + 3);
+    if (s.type === 'keep') return out.set(0, this.keep.mesh.position.y + this.keep.top + 2, 0);
     return out.set(s.x, this.groundOf(id) + GLOW_HEIGHT[s.type] + 2.4, s.z);
   }
 
@@ -209,7 +223,7 @@ export class BattleLayer {
       const s = this.keep.scale;
       this.keep.mesh.scale.set(s, s * (keep.destroyed ? 0.35 : 1), s);
       this.keep.mesh.rotation.z = keep.destroyed ? 0.12 : 0;
-      (this.keep.mesh.children[1] as THREE.Mesh).visible = !keep.destroyed;
+      this.keep.glass.visible = !keep.destroyed;
     }
 
     // Ghost ships.
@@ -250,12 +264,13 @@ export class BattleLayer {
           this.matrix.makeRotationX(time * 8).setPosition(x, y, z);
           this.barrels.setMatrixAt(barrels++, this.matrix);
         }
-      } else if (shot.kind === 'salt' || shot.kind === 'lantern' || shot.kind === 'bolt') {
+      } else if (shot.kind === 'salt' || shot.kind === 'lantern' || shot.kind === 'bolt' || shot.kind === 'pumpkin') {
         if (glow < 160) {
-          const size = shot.kind === 'bolt' ? 1.4 : 1;
+          const size = shot.kind === 'pumpkin' ? 2.4 + 0.3 * Math.sin(time * 14) : shot.kind === 'bolt' ? 1.4 : 1;
           this.matrix.makeScale(size, size, size).setPosition(x, y, z);
           this.glowShots.setMatrixAt(glow, this.matrix);
           if (shot.kind === 'salt') this.color.set('#F4F7FF').multiplyScalar(1.5);
+          else if (shot.kind === 'pumpkin') this.color.set('#FF7A1A').multiplyScalar(1.8);
           else this.color.set(PALETTE.spectral).multiplyScalar(shot.kind === 'bolt' ? 1.2 : 1.6);
           this.glowShots.setColorAt(glow++, this.color);
         }
@@ -273,6 +288,27 @@ export class BattleLayer {
     for (const mesh of [this.darkShots, this.glowShots, this.barrels]) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
+
+    // The locked target wears a pulsing warm ring.
+    this.lockRing.visible = false;
+    if (this.lock) {
+      const s = current.structures.find((st) => st.id === this.lock && !st.destroyed);
+      const g = current.ghosts.findIndex((gh) => gh.id === this.lock && !gh.sunk && isRevealed(current, gh));
+      const pulse = 1 + 0.08 * Math.sin(time * 6);
+      if (s) {
+        const big = s.type === 'keep' ? 2.2 : 1;
+        const y = s.type === 'keep' ? this.keep.mesh.position.y + 0.3 : this.groundOf(s.id) + 0.3;
+        this.lockRing.position.set(s.x, y, s.z);
+        this.lockRing.scale.setScalar(big * pulse);
+        this.lockRing.visible = true;
+      } else if (g >= 0) {
+        const model = this.ghostModels[g]!;
+        this.lockRing.position.set(model.group.position.x, 0.6, model.group.position.z);
+        this.lockRing.scale.setScalar(2 * pulse);
+        this.lockRing.visible = true;
+      }
+      this.lockRing.rotation.y = time * 0.8;
     }
 
     // The fort's braziers flicker and throw off green sparks.
@@ -307,11 +343,21 @@ export class BattleLayer {
         if (e.kind === 'ball' || e.kind === 'tower') b.spawn('sparks', e.x, e.kind === 'tower' ? 4.4 : 2.4, e.z, 1);
         else if (e.kind === 'salt') b.spawn('sparks', e.x, 2.4, e.z, 0.8);
         else if (e.kind === 'lantern' || e.kind === 'bolt') b.spawn('spirit', e.x, e.kind === 'lantern' ? 6.8 : 3, e.z, 0.35, 0.4);
+        else if (e.kind === 'pumpkin') {
+          b.spawn('smoke', e.x, 3.2, e.z, 1.1, 0.8);
+          b.spawn('sparks', e.x, 3.4, e.z, 1.4);
+        }
         break;
       case 'land': {
         const onIsland = Math.hypot(e.x, e.z) < this.radius;
         if (e.kind === 'barrel') b.spawn('spirit', e.x, 0.5, e.z, 1.2);
-        else if (e.hitId !== null) {
+        else if (e.kind === 'pumpkin') {
+          // A burning pumpkin bursts in orange fire, on land or water.
+          const y = onIsland ? 2.2 : 0.4;
+          b.spawn('blast', e.x, y, e.z, 1.9, 1.3);
+          b.spawn('witchfire', e.x, y, e.z, 1.2, 0.8);
+          if (!onIsland) b.spawn('splash', e.x, 0.2, e.z, 1.6);
+        } else if (e.hitId !== null) {
           const spectral = e.kind === 'salt' || e.kind === 'lantern' || e.kind === 'bolt';
           const target = state.structures.find((s) => s.id === e.hitId);
           const y = target && target.type !== 'keep' ? this.groundOf(target.id) + 2 : target ? this.keepLantern.y - 4 : 2;
@@ -337,9 +383,22 @@ export class BattleLayer {
         b.spawn('blast', e.x, 0.6, e.z, 2.4, 1.4);
         b.spawn('splash', e.x, 0.2, e.z, 2.4, 1.5);
         break;
+      case 'powder': {
+        // The biggest bang in the game, so a chain of them reads from across the arena.
+        const y = this.groundOf(e.id) + 1.5;
+        b.spawn('blast', e.x, y, e.z, 3.6, 2.4);
+        b.spawn('smoke', e.x, y + 1, e.z, 3.2, 2.6);
+        b.spawn('sparks', e.x, y, e.z, 3, 2);
+        break;
+      }
       case 'bats':
         break;
     }
+  }
+
+  /** Marks this target as locked (0 for none). */
+  setLock(id: number): void {
+    this.lock = id;
   }
 
   /** The nearest revealed ghost to a point, for the green point light. */
@@ -371,6 +430,8 @@ export class BattleLayer {
     this.flameMaterial.dispose();
     for (const mesh of this.props) mesh.geometry.dispose();
     this.propMaterial.dispose();
+    this.lockRing.geometry.dispose();
+    (this.lockRing.material as THREE.Material).dispose();
     this.keep.dispose();
     this.structures.dispose();
     for (const model of this.ghostModels) model.dispose();

@@ -134,6 +134,8 @@ Then `resolveCollisions` pushes the ship out of any collision circle along the l
 **Property 13: Wave heights are bounded.** *For any* position and time, the sampled wave height is within ± the sum of the wave amplitudes.
 **Validates: Requirement 6.2**
 
+**Property 15: The sea's slope matches its height.** *For any* position and time, `sampleWaveSlope` equals the rate of change of `sampleWaveHeight` along x and along z (checked by central differences), and the shader's `waveSlope` is generated from the same wave table. Validates Requirement 6.6.
+
 **Property 14: Heading interpolation takes the short way round.** *For any* two headings and any t in [0, 1], `lerpAngle` returns the start at t = 0, the end at t = 1, and in between stays on the shorter arc between them.
 **Validates: Requirement 6.5**
 
@@ -146,6 +148,6 @@ Then `resolveCollisions` pushes the ship out of any collision circle along the l
 | Bad URL options | Unknown `quality` values fall back to High; `seed` text is hashed, so any text works |
 
 ## Testing strategy
-- **Property tests** (fast-check, 200 runs each) for Properties 1 to 11, 13 and 14; Property 12 as a static source scan.
+- **Property tests** (fast-check, 200 runs each) for Properties 1 to 11 and 13 to 15; Property 12 as a static source scan.
 - **Example tests** for conventions: heading 0 moves toward +Z, heading π/2 moves toward +X, heading π has bearing 0°.
 - **Smoke test** (`npm run smoke`, Playwright driving the installed Chrome or Edge against the production build): the page loads with no console errors, the intro shows, Set sail starts the game, the ship moves more than 20 m after raising the sails, draw calls ≤ 150 and point lights ≤ 4 on both High and Low, and screenshots are saved to `Documents/screenshots/`.

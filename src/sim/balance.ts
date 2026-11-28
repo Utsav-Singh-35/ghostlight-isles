@@ -144,6 +144,8 @@ export const WEAPONS = {
   salt: { damage: [12, 15, 18], slowSeconds: [2.5, 3, 3.5] },
   barrel: { cooldownSeconds: 9, throwDistance: 16, flightSeconds: 0.7, radius: [9, 11, 13], dps: [14, 19, 25], burnSeconds: 6 },
   bats: { cooldownSeconds: 25, revealSeconds: [6, 8, 10] },
+  /** The Pumpkin Mortar lobs a burning pumpkin where its target stands; it doesn't lead. */
+  mortar: { cooldownSeconds: 8, minRange: 15, range: 100, flightSeconds: 1.6, damage: [45, 60, 80], splash: [6, 7, 8], spread: 1.2 },
   /** Reload time multipliers from the Gunner. */
   gunnerReload: { none: 1, living: 0.8, ghost: 0.65 },
 } as const;
@@ -155,6 +157,10 @@ export const DEFENSES = {
   boneCatapult: { hp: [150, 195, 245], damage: [22, 28, 36], range: 96, minRange: 14, reloadSeconds: 4.6, flightSeconds: 2.2, splash: 7 },
   mine: { damage: [30, 40, 52], triggerRadius: 7, splash: 9 },
   keep: { hp: [260, 340, 440] },
+  /** Bonus targets on haunted forts. They fire nothing and don't count toward destruction. */
+  vault: { hp: [90, 130, 180] },
+  /** A powder store explodes when destroyed, hurting every structure and the ship within the blast. */
+  powder: { hp: [50, 50, 50], blastRadius: 16, blastDamage: 90, shipDamage: 54 },
 } as const;
 
 export const GHOSTS = {
@@ -179,7 +185,7 @@ export const GHOSTS = {
   maxLevel: 5,
 } as const;
 
-export type ShotKind = 'ball' | 'salt' | 'tower' | 'lantern' | 'stone' | 'bolt' | 'fire' | 'mine';
+export type ShotKind = 'ball' | 'salt' | 'tower' | 'lantern' | 'stone' | 'bolt' | 'fire' | 'mine' | 'pumpkin';
 export type TargetClass = 'living' | 'ghost' | 'structure';
 
 /** Damage multiplier for each kind of shot against each kind of target. */
@@ -192,6 +198,8 @@ export const DAMAGE_VS: Readonly<Record<ShotKind, Readonly<Record<TargetClass, n
   bolt: { living: 1, ghost: 0, structure: 1 },
   fire: { living: 1, ghost: 1, structure: 1 },
   mine: { living: 1, ghost: 1, structure: 0 },
+  // A burning pumpkin is a siege weapon: full damage to stone, less to ships that can dodge it.
+  pumpkin: { living: 0.8, ghost: 0.6, structure: 1 },
 };
 
 // ---- Progress -------------------------------------------------------------------------
@@ -231,6 +239,7 @@ export const COSTS = {
   salt: [null, { gold: 300, ectoplasm: 30 }, { gold: 900, ectoplasm: 80 }],
   barrel: [{ gold: 400, ectoplasm: 0 }, { gold: 800, ectoplasm: 0 }, { gold: 1600, ectoplasm: 0 }],
   bats: [{ gold: 0, ectoplasm: 60 }, { gold: 0, ectoplasm: 120 }, { gold: 0, ectoplasm: 240 }],
+  mortar: [{ gold: 500, ectoplasm: 20 }, { gold: 1000, ectoplasm: 40 }, { gold: 2000, ectoplasm: 80 }],
   hull: [null, { gold: 700, ectoplasm: 0 }, { gold: 1800, ectoplasm: 60 }],
   /** Removing a defense returns this share of everything spent on it. */
   refund: 0.5,
@@ -278,12 +287,22 @@ export const FORTS = {
   ],
   /** The fort must fall before dawn, seconds. */
   timeLimitSeconds: [150, 165, 180, 195, 225],
+  /** Bonus targets: treasure vaults pay `vaultGold` each when destroyed; powder stores blow up their neighbours. */
+  vaults: [1, 1, 1, 2, 2],
+  powderStores: [0, 1, 1, 2, 2],
+  vaultGold: [80, 120, 180, 260, 360],
 } as const;
 
 export const REWARDS = {
   /** Capturing a fort, by its fort level − 1. */
   captureGold: [300, 450, 650, 900, 1200],
   captureEctoplasm: [10, 18, 28, 40, 55],
+  /** A capture also pays this much gold per level of every tower destroyed. */
+  towerBounty: 15,
+  /** A capture pays up to this share of its base gold more, by the share of the dawn clock left. */
+  speedBonus: 0.5,
+  /** A capture pays this much gold for each of the island's own ghost ships sunk (plus ghostShipEctoplasm). */
+  islandGhostGold: 15,
   /** A raid takes at most this share of the defender's storage, scaled by destruction. */
   raidShare: 0.3,
   infamyPerStar: 10,
@@ -344,6 +363,8 @@ export const PUZZLE = {
 export const LAYOUT = {
   /** Tower slots sit on a ring at this share of the island's radius. */
   slotRing: 0.6,
+  /** A fort's treasure vaults and powder stores sit on this ring, between the tower slots. */
+  treasureRing: 0.47,
   /** Mines float this far outside the island's collision circle, metres. */
   mineMargin: 10,
   /** Tower and mine slots on the home island, by home level. */

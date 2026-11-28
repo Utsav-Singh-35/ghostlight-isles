@@ -24,10 +24,10 @@ Short on time? The title screen also has **Try a fort battle** and **Summon the 
 
 ## What's in the game
 
-- **Sailing:** a faceted night sea with moon glitter, fog and lantern light; 14 islands generated from a seed; three sail settings, steering with momentum and solid shores.
-- **Capturing islands:** break a haunted island's fort from your ship before dawn. Captured islands pay gold every minute.
+- **Sailing:** a night sea with smooth wave lighting, ripples that catch the moon and lanterns, a reflected sky, whitecaps, surf along every coastline, fog and lantern light; 14 islands generated from a seed; three sail settings, steering with momentum and solid shores.
+- **Capturing islands:** break a haunted island's fort from your ship before dawn. Forts come in five levels, built from their seed as wooden stockades, ruins, curtain walls or star forts around a ghost spire, a broken lighthouse or a skull tower. Click a fort's name for its report. The reward adds gold for every gun silenced, for time left before dawn, for island ghosts sunk and for treasure vaults cracked; powder stores blow up the towers beside them. Captured islands pay gold every minute.
 - **Forts get harder the further you sail:** five fort levels, set by distance from Last Light. Harder islands are bigger, with taller walls, more and stronger towers, mines, a bigger keep and ghost ships that rise from the island to hunt you. A new ship takes the level-1 forts; level 5 needs a fully refitted ship.
-- **Base building on Last Light:** Cannon Towers, Spirit Lanterns (they reveal ghosts), Bone Catapults and Jack-o'-lantern Mines, three levels each, plus home upgrades for more slots and storage. The shipwright refits your hull, cannons, Salt Shot, Witchfire barrels and the Bat Swarm.
+- **Base building on Last Light:** Cannon Towers, Spirit Lanterns (they reveal ghosts), Bone Catapults and Jack-o'-lantern Mines, three levels each, plus home upgrades for more slots and storage. The shipwright refits your hull, cannons, Salt Shot, Witchfire barrels, the Bat Swarm and the Pumpkin Mortar.
 - **Raids (asynchronous multiplayer):** attack a saved copy of another captain's island while they're away. The server replays your battle from its seed and your inputs and pays loot only for what really happened. Raided islands get 4 hours of protection and a report. Ten rival captains keep the sea busy from the first minute, and a leaderboard ranks everyone by infamy.
 - **The Blood Moon and the ghost fleet:** every 20 minutes the moon turns red for every player at once, and the fleet sails for your island. Its size grows with the cursed gold you hoard and the strength of your home.
 - **Cursed gold:** ghost loot spends like gold but draws bigger fleets until the chapel cleanses it.
@@ -55,6 +55,9 @@ Short on time? The title screen also has **Try a fort battle** and **Summon the 
 | R | Open the raid list | Switch between cannonballs and Salt Shot |
 | F | | Throw a Witchfire barrel (once the shipwright fits one) |
 | B | | Release the Bat Swarm (once the shipwright fits it) |
+| G | | Fire the Pumpkin Mortar (once the shipwright fits it) |
+| T | | Lock your guns on the next target; click a health bar to lock that one |
+| Click an island's name | Read its fort report | |
 | 1 | Island actions (attack the fort, open your base) | |
 | Tab | Open or close your base | |
 | L | Captain's Log and leaderboard | |
@@ -96,7 +99,7 @@ npm run dev        # http://localhost:5173, with the game server at /api
 
 Everything Kiro uses lives in [`.kiro/`](.kiro), and a running log of what each feature caught is in [Documents/kiro-usage-log.md](Documents/kiro-usage-log.md).
 
-- **Specs:** [ten specs](.kiro/specs), one per game system, each written before its code: EARS requirements, a design with numbered correctness properties (64 in all), and tasks.
+- **Specs:** [eleven specs](.kiro/specs), one per game system, each written before its code: EARS requirements, a design with numbered correctness properties (70 in all), and tasks.
 - **Property-based tests:** every correctness property is a fast-check test with the same number and name. They found a floating-point bug in the wave phases, and they keep the server and the rules from drifting apart. Example and balance tests from the same specs found forts whose keeps were out of reach, twice.
 - **Steering:** product, tech and structure rules always load; simulation, rendering and testing conventions load only for matching files; the game design loads automatically for gameplay work, so balance numbers are always at hand.
 - **Hooks:** a session brief with the time left and the next feature; a commit gate that blocks commits unless tests, types and asset credits pass (it caught a test runner that only worked from some terminals); a simulation test run after every change to the game rules; and a credit check for new assets.

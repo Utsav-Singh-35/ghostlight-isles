@@ -4,7 +4,8 @@ import { SHIP, TICK_SECONDS, WORLD } from '../sim/balance';
 import { angleDelta } from '../sim/math';
 import { OrdersView } from '../ui/ordersView';
 import { ORDERS, currentOrder, observe, readDone, writeDone, type OrderId } from './orders';
-import type { BattleMode, BattleResult, BattleSetup, InputEvent, Loadout } from '../sim/battle';
+import { isRevealed, type BattleMode, type BattleResult, type BattleSetup, type BattleState, type InputEvent, type Loadout } from '../sim/battle';
+import type { RewardLine } from '../sim/captureRewards';
 import { hashSeed } from '../sim/rng';
 import type { ShipState } from '../sim/ship';
 import { createWorldState, generateWorld, isAground, stepWorld, type World, type WorldState } from '../sim/world';
@@ -12,7 +13,7 @@ import { ApiError } from '../net/backend';
 import { Session } from '../net/session';
 import { ECONOMY, FORTS, REWARDS } from '../sim/balance';
 import { DEFENSE_NAMES, SHIP_PART_NAMES, slotsFor } from '../sim/base';
-import { fortDifficulty, fortSetup, mineSlotPosition, slotPosition } from '../sim/layout';
+import { fortDifficulty, fortLayout, fortSetup, mineSlotPosition, slotPosition } from '../sim/layout';
 import type { StructureView } from '../render/structureMeshes';
 import { BasePanel } from '../ui/basePanel';
 import { SidePanel, ago } from '../ui/sidePanel';
@@ -32,7 +33,7 @@ import { CaptainBar } from '../ui/captainBar';
 import { el } from '../ui/dom';
 import { createHud, type Hud } from '../ui/hud';
 import { createIntro, type Intro } from '../ui/intro';
-import { createLabels, type Labels } from '../ui/labels';
+import { LABEL_RANGE, createLabels, type Labels } from '../ui/labels';
 import { createNotice, showFatal, type Notice } from '../ui/notice';
 import { ResultScreen, type ResultInfo } from '../ui/resultScreen';
 import { BattleRunner } from './battleRunner';
@@ -65,9 +66,11 @@ export interface BattleTicket {
 }
 
 /** The starting loadout, used for practice battles. */
-export const PRACTICE_LOADOUT: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 1, bats: 1, gunner: 'living', navigator: 'living' };
+export const PRACTICE_LOADOUT: Loadout = { hull: 160, cannon: 1, salt: 1, barrel: 1, bats: 1, mortar: 1, gunner: 'living', navigator: 'living' };
 
 const SIEGE_FAST_FORWARD = 4;
+/** A haunted island can be attacked once its shore is this close, metres. */
+const ATTACK_RANGE = 140;
 const ORDERS_KEY = 'ghostlight.orders';
 const ORDERS_HIDDEN_KEY = 'ghostlight.orders.hidden';
 
@@ -125,6 +128,8 @@ export class App {
   private ordersDid: OrderId[] = [];
   /** True once the captain has loaded, so orders ticked from an old profile don't chime. */
   private ordersPrimed = false;
+  /** The island whose fort report the player opened by clicking its label, or null. */
+  private selected: number | null = null;
   /** Radians the ship has turned at sea this visit, for the steer order. */
   private turned = 0;
   private lastHeading: number | null = null;
@@ -165,10 +170,16 @@ export class App {
       { label: 'Summon the Blood Moon', title: 'Call the ghost fleet to Last Light now instead of waiting for the shared Blood Moon', run: () => void this.summon() },
       { label: () => (this.sound.enabled ? 'Sound: On' : 'Sound: Off'), title: 'Turn sound on or off (M)', run: () => this.toggleSound() },
     ]);
-    this.labels = createLabels(this.overlay, this.world);
+    this.labels = createLabels(this.overlay, this.world, (id) => this.selectIsland(id));
     this.aground = createNotice(this.overlay, 'notice-aground');
     this.slow = createNotice(this.overlay, 'notice-slow');
-    this.battleHud = new BattleHud(this.overlay, () => this.keyboard.requestRetreat());
+    this.battleHud = new BattleHud(
+      this.overlay,
+      () => this.keyboard.requestRetreat(),
+      (id) => {
+        this.keyboard.lock = this.keyboard.lock === id ? 0 : id;
+      },
+    );
     this.results = new ResultScreen(this.overlay, (tone) => {
       if (tone !== 'neutral') this.sound.play(tone);
     });
@@ -211,8 +222,10 @@ export class App {
     this.keyboard.on('Escape', () => {
       this.side.close();
       this.toggleBase(false);
+      this.selected = null;
     });
     this.keyboard.on('KeyM', () => this.toggleSound());
+    this.keyboard.on('KeyT', () => this.cycleLock());
     this.overlay.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('button')) this.sound.play('click');
     });
@@ -604,7 +617,7 @@ export class App {
   private nearbyIsland(): Island | null {
     const ship = this.current.ship;
     let best: Island | null = null;
-    let bestDistance = 140;
+    let bestDistance = ATTACK_RANGE;
     for (const island of this.world.islands) {
       const d = Math.hypot(island.x - ship.x, island.z - ship.z) - island.radius;
       if (d < bestDistance) {
@@ -621,6 +634,8 @@ export class App {
       this.prompt.hide();
       return;
     }
+    // A fort report the player opened by clicking a label comes first.
+    if (this.showFortReport()) return;
     const island = this.nearbyIsland();
     const session = this.session;
     if (!island) {
@@ -649,7 +664,37 @@ export class App {
       return;
     }
     actions.push({ code: 'Digit1', key: '1', label: 'Attack the fort', run: () => void this.captureFort(island) });
-    this.prompt.show(`${island.name}, haunted`, fortDetail(island), actions);
+    this.prompt.show(`${island.name}, haunted`, [fortDetail(island), 'Click its name for the full fort report.'], actions);
+  }
+
+  /** Clicking a haunted island's label opens its fort report; clicking it again closes it. */
+  private selectIsland(id: number): void {
+    if (this.mode !== 'sail') return;
+    this.selected = this.selected === id ? null : id;
+  }
+
+  /** The fort report for the selected island, if it is still worth showing. Returns false when there is none. */
+  private showFortReport(): boolean {
+    const id = this.selected;
+    const session = this.session;
+    const island = id === null ? undefined : this.world.islands[id];
+    if (!island || !session || island.kind !== 'haunted' || !this.standardSea || session.profile.captured.includes(island.id)) {
+      this.selected = null;
+      return false;
+    }
+    const ship = this.current.ship;
+    const away = Math.hypot(island.x - ship.x, island.z - ship.z) - island.radius;
+    if (away > LABEL_RANGE) {
+      this.selected = null;
+      return false;
+    }
+    const lines = fortReport(island);
+    const actions: PromptAction[] = [];
+    if (session.profile.sunk) lines.push("Your ship lies in Davy Jones' Locker.");
+    else if (away <= ATTACK_RANGE) actions.push({ code: 'Digit1', key: '1', label: 'Attack the fort', run: () => void this.captureFort(island) });
+    else lines.push(`Sail ${Math.ceil((away - ATTACK_RANGE) / 10) * 10} m closer to attack.`);
+    this.prompt.show(`${island.name} · fort ${fortDifficulty(island)} of ${FORTS.levels}`, lines, actions);
+    return true;
   }
 
   /** Ticks off the captain's orders from what happened this frame, and shows the next one. */
@@ -697,6 +742,17 @@ export class App {
     writeStorage(ORDERS_HIDDEN_KEY, '1');
   }
 
+  /** T in battle: lock the next target by distance from the ship; after the last one, let go. */
+  private cycleLock(): void {
+    const state = this.runner?.current;
+    if (this.mode !== 'battle' || !state) return;
+    const p = state.player.ship;
+    const away = (t: { x: number; z: number }) => Math.hypot(t.x - p.x, t.z - p.z);
+    const targets = lockable(state, true).sort((a, b) => away(a) - away(b) || a.id - b.id);
+    const i = targets.findIndex((t) => t.id === this.keyboard.lock);
+    this.keyboard.lock = i < 0 ? (targets[0]?.id ?? 0) : (targets[i + 1]?.id ?? 0);
+  }
+
   private toggleSound(): void {
     const on = this.sound.toggle();
     this.toasts.show(on ? 'Sound on. Press M to turn it off.' : 'Sound off. Press M to turn it on.', 'neutral', 2.5);
@@ -728,11 +784,19 @@ export class App {
   private captureResult(island: Island, outcome: CaptureOutcome): ResultInfo {
     const lines = battleLines(outcome.result, 'assault');
     if (outcome.won) {
+      const { rewards } = outcome;
+      // Each part of the reward on its own line, as the server worked it out from its replay.
+      const parts = rewards.lines.map((l) => `${l.label}: +${l.gold} gold${l.ectoplasm ? `, +${l.ectoplasm} ectoplasm` : ''}`);
       return {
         title: `${island.name} is yours`,
         tone: 'win',
         stars: outcome.result.stars,
-        lines: [...lines, `+${outcome.rewards.gold} gold, +${outcome.rewards.ectoplasm} ectoplasm`, `It pays ${ECONOMY.tributePerMinute} gold a minute in tribute.`],
+        lines: [
+          ...lines,
+          ...parts,
+          `In all: +${rewards.gold} gold, +${rewards.ectoplasm} ectoplasm${rewards.full ? ' (your storage is full, so some was left behind)' : ''}`,
+          `It pays ${ECONOMY.tributePerMinute} gold a minute in tribute.`,
+        ],
         actions: [],
       };
     }
@@ -770,8 +834,12 @@ export class App {
       const right = this.renderer.screenRight();
       this.sound.battle(events, { x: ship.x, z: ship.z, rightX: right.x, rightZ: right.z }, runner.current.setup.island.radius);
       this.sound.frame({ dt: frameSeconds, speed: runner.current.player.sunk ? 0 : ship.speed / SHIP.maxSpeed, blood, underwater: false });
+      // A lock on something destroyed or sunk lets go. (A ghost that slips into the fog stays locked.)
+      const lock = this.keyboard.lock;
+      if (lock && !lockable(runner.current, false).some((t) => t.id === lock)) this.keyboard.lock = 0;
       const layer = this.renderer.battleLayer;
-      if (layer) this.battleHud.update(runner.current, layer, this.renderer, this.keyboard.salt);
+      layer?.setLock(this.keyboard.lock);
+      if (layer) this.battleHud.update(runner.current, layer, this.renderer, this.keyboard.salt, this.keyboard.lock);
     } else {
       const ship = interpolateShip(this.previous.ship, this.current.ship, alpha);
       const home = this.world.islands[0]!;
@@ -787,7 +855,7 @@ export class App {
       this.watchMoon(frameSeconds);
       this.sound.frame({ dt: frameSeconds, speed: ship.speed / SHIP.maxSpeed, blood: this.bloodAmount, underwater: this.locker.visible });
       this.hud.update(ship, this.keyboard.sailLevel);
-      this.labels.update(ship, this.renderer, this.renderer.labelAnchors);
+      this.labels.update(ship, this.renderer, this.renderer.labelAnchors, this.selected);
       const stuck = this.mode === 'sail' && this.current.ship.sail > 0.1 ? isAground(this.world, this.current.ship) : null;
       this.aground.show(stuck ? `Aground on ${stuck.name}. Steer away with A or D.` : null);
       this.updatePrompt();
@@ -826,6 +894,7 @@ export class App {
     this.keyboard.setEnabled(true);
     this.keyboard.sailLevel = 1;
     this.keyboard.salt = ticket.setup.mode === 'siege' && ticket.setup.loadout.salt > 0;
+    this.keyboard.lock = 0;
     this.hud.setVisible(false);
     this.labels.setVisible(false);
     this.captainBar.setVisible(false);
@@ -866,16 +935,19 @@ export class App {
     this.mode = 'sail';
     this.keyboard.sailLevel = 0;
     this.keyboard.salt = false;
+    this.keyboard.lock = 0;
     this.hud.setVisible(true);
     this.labels.setVisible(true);
     this.captainBar.setVisible(this.session !== null);
     this.checkLocker();
   }
 
-  /** Practice battles, for judges and for the title screen's shortcuts. */
+  /** Practice battles, for judges and for the title screen's shortcuts. `practice-fort-3` practises on the first fort of level 3. */
   startScenario(name: string): void {
-    if (name === 'practice-fort') {
-      const island = this.world.islands[1]!;
+    const fort = /^practice-fort(?:-([1-5]))?$/.exec(name);
+    if (fort) {
+      const level = Number(fort[1] ?? 0);
+      const island = this.world.islands.find((i) => i.kind === 'haunted' && fortDifficulty(i) === level) ?? this.world.islands[1]!;
       const setup = fortSetup(island, PRACTICE_LOADOUT, hashSeed(`practice-${Math.floor(this.time * 1000)}`));
       this.startBattle({
         title: `Practice: the level ${fortDifficulty(island)} fort on ${island.name}`,
@@ -939,6 +1011,8 @@ export class App {
           ghosts: s.ghosts.filter((g) => !g.sunk).length,
           hull: s.player.hp,
           islandRadius: s.setup.island.radius,
+          lock: this.keyboard.lock,
+          bonusTargets: s.structures.filter((x) => x.type === 'vault' || x.type === 'powder').length,
         };
       },
       resultShowing: () => this.results.visible,
@@ -998,7 +1072,7 @@ export interface CaptureOutcome {
   readonly won: boolean;
   readonly islandId: number;
   readonly result: BattleResult;
-  readonly rewards: { readonly gold: number; readonly ectoplasm: number };
+  readonly rewards: { readonly gold: number; readonly ectoplasm: number; readonly lines: readonly RewardLine[]; readonly full: boolean };
 }
 
 /** Plain-words summary lines for a finished battle. */
@@ -1017,6 +1091,19 @@ export function battleLines(result: BattleResult, mode: BattleMode): string[] {
   }
   lines.push(result.shipSunk ? 'Your ship sank.' : `Your hull: ${Math.ceil(result.hull)} of ${result.maxHull}`);
   return lines;
+}
+
+/**
+ * What the player can lock in this battle: standing structures in an assault, and ghost ships.
+ * When choosing a new lock only revealed ghosts count, since veiled ones can't be aimed at.
+ */
+export function lockable(state: BattleState, revealedOnly: boolean): { id: number; x: number; z: number }[] {
+  const out: { id: number; x: number; z: number }[] = [];
+  if (state.setup.mode === 'assault') {
+    for (const s of state.structures) if (!s.destroyed && s.type !== 'mine') out.push({ id: s.id, x: s.x, z: s.z });
+  }
+  for (const g of state.ghosts) if (!g.sunk && (!revealedOnly || isRevealed(state, g))) out.push({ id: g.id, x: g.ship.x, z: g.ship.z });
+  return out;
 }
 
 /** "a", "a and b", "a, b and c". */
@@ -1040,6 +1127,32 @@ export function fortDetail(island: Island): string {
   if (mines > 0) parts.push(`${mines} ${mines === 1 ? 'mine' : 'mines'}`);
   if (ghosts > 0) parts.push(`${ghosts} ghost ${ghosts === 1 ? 'ship' : 'ships'}`);
   return `Fort level ${level} of ${FORTS.levels}: ${listInWords(parts)}. Break it within ${clockText(FORTS.timeLimitSeconds[i]!)} for ${REWARDS.captureGold[i]} gold and ${ECONOMY.tributePerMinute} gold a minute.`;
+}
+
+/** A haunted fort's full report, in words: what defends it, its treasure, its clock and every part of its reward. */
+export function fortReport(island: Island): string[] {
+  const level = fortDifficulty(island);
+  const i = level - 1;
+  const counts = new Map<string, number>();
+  for (const d of fortLayout(island).defenses) {
+    if (d.type !== 'mine') counts.set(DEFENSE_NAMES[d.type], (counts.get(DEFENSE_NAMES[d.type]) ?? 0) + 1);
+  }
+  const towers = [...counts].map(([name, n]) => `${n} ${name}${n === 1 ? '' : 's'}`);
+  const mines = FORTS.mines[i]!;
+  const ghosts = FORTS.ghosts[i]!.count;
+  const vaults = FORTS.vaults[i]!;
+  const powder = FORTS.powderStores[i]!;
+  const base = REWARDS.captureGold[i]!;
+  const lines = [`Defended by ${listInWords(towers)}${mines > 0 ? ` and ${mines} ${mines === 1 ? 'mine' : 'mines'}` : ''}.`];
+  if (ghosts > 0) lines.push(`${ghosts} ghost ${ghosts === 1 ? 'ship rises' : 'ships rise'} from the island to hunt you.`);
+  lines.push(
+    `Treasure: ${vaults} ${vaults === 1 ? 'vault' : 'vaults'} worth ${FORTS.vaultGold[i]} gold each${powder > 0 ? `. Powder: ${powder} ${powder === 1 ? 'store that blows' : 'stores that blow'} up the towers beside ${powder === 1 ? 'it' : 'them'}` : ''}.`,
+  );
+  lines.push(`The fort must fall within ${clockText(FORTS.timeLimitSeconds[i]!)}.`);
+  lines.push(
+    `Pays ${base} gold and ${REWARDS.captureEctoplasm[i]} ectoplasm, plus ${REWARDS.towerBounty} gold per level of every tower destroyed, up to ${Math.floor(base * REWARDS.speedBonus)} for speed${ghosts > 0 ? `, ${REWARDS.islandGhostGold} gold and ${REWARDS.ghostShipEctoplasm} ectoplasm per ghost ship sunk,` : ''} and the vaults' gold.`,
+  );
+  return lines;
 }
 
 /** The battle's objective line for a fort assault. */

@@ -5,7 +5,7 @@ import type { Profile, Weapons } from './profile';
 
 export type CommandResult = { readonly ok: true; readonly profile: Profile } | { readonly ok: false; readonly reason: string };
 export type ShipPart = keyof Weapons;
-export const SHIP_PARTS: readonly ShipPart[] = ['hull', 'cannon', 'salt', 'barrel', 'bats'];
+export const SHIP_PARTS: readonly ShipPart[] = ['hull', 'cannon', 'salt', 'barrel', 'bats', 'mortar'];
 export const DEFENSE_TYPES: readonly DefenseType[] = [...TOWER_TYPES, 'mine'];
 
 export const DEFENSE_NAMES: Readonly<Record<DefenseType, string>> = {
@@ -21,6 +21,7 @@ export const SHIP_PART_NAMES: Readonly<Record<ShipPart, string>> = {
   salt: 'Salt Shot',
   barrel: 'Witchfire Barrel',
   bats: 'Bat Swarm',
+  mortar: 'Pumpkin Mortar',
 };
 
 const fail = (reason: string): CommandResult => ({ ok: false, reason });
@@ -50,7 +51,8 @@ export function spentOn(type: DefenseType, level: number): Cost {
 
 /** Cost to raise a ship part to its next level, or null at the top. */
 export function shipUpgradeCost(profile: Pick<Profile, 'weapons'>, part: ShipPart): Cost | null {
-  const current = profile.weapons[part];
+  // Captains saved before a part existed don't have it yet: level 0.
+  const current = profile.weapons[part] ?? 0;
   if (current >= 3) return null;
   return COSTS[part][current] ?? null;
 }
@@ -126,5 +128,5 @@ export function upgradeShip(profile: Profile, part: unknown): CommandResult {
   if (!cost) return fail(`${SHIP_PART_NAMES[p]} is already at the highest level.`);
   const resources = spend(profile.resources, cost);
   if (!resources) return fail(`You need ${describeCost(cost)}.`);
-  return { ok: true, profile: { ...profile, resources, weapons: { ...profile.weapons, [p]: profile.weapons[p] + 1 } } };
+  return { ok: true, profile: { ...profile, resources, weapons: { ...profile.weapons, [p]: (profile.weapons[p] ?? 0) + 1 } } };
 }

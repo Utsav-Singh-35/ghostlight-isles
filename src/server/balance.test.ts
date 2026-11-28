@@ -14,8 +14,8 @@ import { autopilot } from './testAutopilot';
 // with cannonballs). A real player who also uses Salt Shot against ghosts does at least as well.
 const fresh = createProfile('p', 'Test', 'x', 0);
 const NEW_SHIP = loadoutOf(fresh);
-const REFITTED: Loadout = { hull: 210, cannon: 2, salt: 2, barrel: 1, bats: 1, gunner: 'living', navigator: 'living' };
-const FULLY_REFITTED: Loadout = { hull: 270, cannon: 3, salt: 3, barrel: 3, bats: 3, gunner: 'living', navigator: 'living' };
+const REFITTED: Loadout = { hull: 210, cannon: 2, salt: 2, barrel: 1, bats: 1, mortar: 0, gunner: 'living', navigator: 'living' };
+const FULLY_REFITTED: Loadout = { hull: 270, cannon: 3, salt: 3, barrel: 3, bats: 3, mortar: 0, gunner: 'living', navigator: 'living' };
 const ALL_WEAPONS = FLAG.port | FLAG.starboard | FLAG.barrel | FLAG.bats;
 
 const atLevel = (level: number): Island[] => STANDARD_WORLD.islands.filter((i) => i.kind === 'haunted' && fortDifficulty(i) === level);

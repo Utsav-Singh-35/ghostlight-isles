@@ -8,6 +8,7 @@ export type CueName =
   | 'zap'
   | 'catapult'
   | 'barrel'
+  | 'mortar'
   | 'hit'
   | 'spiritHit'
   | 'fireball'
@@ -66,16 +67,19 @@ export function cueOf(event: BattleEvent, islandRadius: number): CueName | null 
     if (event.kind === 'lantern' || event.kind === 'bolt') return 'zap';
     if (event.kind === 'stone') return 'catapult';
     if (event.kind === 'barrel') return 'barrel';
+    if (event.kind === 'pumpkin') return 'mortar';
     return null;
   }
   if (event.type === 'land') {
-    if (event.kind === 'barrel') return 'fireball';
+    if (event.kind === 'barrel' || event.kind === 'pumpkin') return 'fireball';
     if (event.hitId !== null) return event.kind === 'salt' || event.kind === 'lantern' || event.kind === 'bolt' ? 'spiritHit' : 'hit';
     return Math.hypot(event.x, event.z) < islandRadius ? 'thud' : 'splash';
   }
   if (event.type === 'destroyed') return event.structure === 'keep' ? 'keepFalls' : 'explosion';
   if (event.type === 'sunk') return event.kind === 'ghost' ? 'ghostWail' : 'shipSinks';
   if (event.type === 'mine') return 'mine';
+  // A powder store going up is an explosion: news the player needs, never dropped.
+  if (event.type === 'powder') return 'explosion';
   return 'bats';
 }
 

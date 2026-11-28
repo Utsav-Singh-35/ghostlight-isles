@@ -28,16 +28,17 @@ export class ContextPrompt {
     parent.append(this.root);
   }
 
-  /** Shows the prompt; rebuilds the buttons only when something changed. */
-  show(title: string, detail: string, actions: readonly PromptAction[]): void {
-    const signature = `${title}|${detail}|${actions.map((a) => a.code + a.label).join(',')}`;
+  /** Shows the prompt with one detail line or several (a fort report); rebuilds only when something changed. */
+  show(title: string, detail: string | readonly string[], actions: readonly PromptAction[]): void {
+    const lines = typeof detail === 'string' ? (detail ? [detail] : []) : detail;
+    const signature = `${title}|${lines.join('\n')}|${actions.map((a) => a.code + a.label).join(',')}`;
     this.actions = actions;
     this.root.hidden = false;
     if (signature === this.signature) return;
     this.signature = signature;
     setText(this.title, title);
-    setText(this.detail, detail);
-    this.detail.hidden = detail === '';
+    this.detail.replaceChildren(...lines.map((line) => el('div', 'cp-line', line)));
+    this.detail.hidden = lines.length === 0;
     this.list.replaceChildren(
       ...actions.map((action) => {
         const button = el('button', 'cp-action');

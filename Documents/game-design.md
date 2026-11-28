@@ -38,6 +38,7 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 | Salt Shot | 40% damage | Full damage, slows ghosts | Salt is an old folk charm against spirits |
 | Witchfire Barrel | Burns an area | Burns an area | Green fire, thrown over the stern |
 | Bat Swarm | No damage | No damage | Shows a base's layout and hidden mines before an attack |
+| Pumpkin Mortar | 80% damage, splash | 60% damage, splash | G lobs a burning pumpkin over walls: **45 / 60 / 80** damage, splash **6 / 7 / 8 m**, range **15 to 100 m**, 1.6 s flight, 8 s cooldown. Full damage to structures |
 
 ## Island defenses (3 upgrade levels each)
 | Defense | Strong against | Notes |
@@ -51,7 +52,8 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 - One deterministic simulation runs every fight in a 240 m arena around the island, for up to **150 s**.
 - **Assault** (fort captures and raids): your ship against the island's defenses. **Siege** (ghost raids): ghost ships against your island; your towers and your ship fight back.
 - Broadsides: Q fires port, E fires starboard. **3 / 4 / 5** shots per side by cannon level, **14 / 17 / 21** damage each, range **64 m** (**86 m** against the keep, which stands at the island's heart), reload **2 s** (Gunner: ×0.8, ghost Gunner: ×0.65). Broadsides aim themselves at the nearest target within 55° of the beam.
-- R swaps cannonballs and Salt Shot. F throws a Witchfire Barrel (burns for 6 s, 9 s cooldown). B sends the Bat Swarm (reveals everything for 6 to 10 s, 25 s cooldown).
+- R swaps cannonballs and Salt Shot. F throws a Witchfire Barrel (burns for 6 s, 9 s cooldown). B sends the Bat Swarm (reveals everything for 6 to 10 s, 25 s cooldown). G fires the Pumpkin Mortar.
+- **Target lock:** T cycles a lock through the targets your guns can see, and clicking a health bar locks that one. Broadsides fire at the lock when it is in their arc, and the mortar fires at the lock or the nearest structure in reach. The lock is part of each recorded input, so the server's replay aims the same way.
 - Towers: Cannon Tower **6 / 9 / 13** damage, range 70 m; Spirit Lantern **9 / 12 / 16**, range 60 m; Bone Catapult **22 / 28 / 36** splash, range 96 m, doesn't lead its target. Mines: **30 / 40 / 52** damage when a hostile ship comes within 7 m.
 - Ghost ships: **55 to 150** health and **7 to 15** damage by fleet level, range 66 m. They circle the island 8 m outside its shore.
 - Ghosts are **veiled** in fog: only Spirit Lanterns can aim at them, unless a lantern, your ship's lantern (20 m, 30 m with a Navigator, 45 m with a ghost Navigator) or the Bat Swarm reveals them.
@@ -71,7 +73,7 @@ Storage caps per home-island level. Raids can take at most **30%** of what is in
 | Bone Catapult | 450 gold | 900 gold | 1,700 gold | 2 |
 | Jack-o'-lantern Mine | 100 gold | 220 gold | 450 gold | 1 |
 
-Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 / 1,800 gold (+60 ecto) for 210 / 270 health; Cannons 600 / 1,500 gold; Salt Shot 300 + 30 ecto / 900 + 80 ecto; Witchfire Barrel unlock 400, then 800 / 1,600 gold; Bat Swarm unlock 60 ecto, then 120 / 240 ecto. A new captain starts with 600 gold, 30 ectoplasm, one Cannon Tower, cannons and Salt Shot at level 1.
+Removing a defense refunds half of everything spent on it. Shipwright: Hull 700 / 1,800 gold (+60 ecto) for 210 / 270 health; Cannons 600 / 1,500 gold; Salt Shot 300 + 30 ecto / 900 + 80 ecto; Witchfire Barrel unlock 400, then 800 / 1,600 gold; Bat Swarm unlock 60 ecto, then 120 / 240 ecto; Pumpkin Mortar 500 gold + 20 ecto, then 1,000 + 40 / 2,000 + 80. A new captain starts with 600 gold, 30 ectoplasm, one Cannon Tower, cannons and Salt Shot at level 1.
 
 ## Crew (code)
 - You start with two: a **Gunner** (reloads 20% faster) and a **Navigator** (your lantern shows ghosts **30 m** off in the fog instead of 20 m).
@@ -94,6 +96,10 @@ Haunted islands are taken by battle only: destroy every tower and the keep (the 
 - Broadsides reach the keep 22 m further than other targets (86 m), so you needn't scrape the shore of a big island to hit it.
 - Balance with the scripted autopilot: a new ship takes every level-1 fort and most level-2 forts, loses at level 3 (a ship with level-2 cannons, Salt Shot and hull takes it), and level 4 and 5 need a fully refitted ship.
 - Each captured island pays 12 gold a minute in tribute, whatever its level.
+- **Picking a fort:** click a haunted island's name for its fort report (towers, ghosts, treasure, dawn clock and pay). Press 1 to attack it from within 140 m.
+- **Bonus targets** stand between the towers and never fire. **Treasure vaults** (health 90 / 130 / 180) pay **80 / 120 / 180 / 260 / 360** gold by fort level when cracked; levels 1 to 5 have 1, 1, 1, 2, 2 of them. **Powder stores** (health 50; levels 2 to 5 have 1, 1, 2, 2) blow up when destroyed: 90 damage to structures and 54 to your ship within 16 m, and one blast can set off the next. Neither counts toward destruction, stars or the end of the battle.
+- **The reward** for a captured fort is the table's pay, plus **15 gold per tower level destroyed** ("guns silenced"), a speed bonus of up to **50%** of the base gold by the share of the dawn clock left, **15 gold** per island ghost sunk and the gold of every vault cracked. The server works it out from its own replay; if your storage is full, the result card says so.
+- **How forts look** comes from the island's seed: a wooden stockade (levels 1 and 2 only), a ruin, a curtain wall or a star fort (mostly at levels 3 to 5), in one of four stones, with gibbets on the beach from level 2. The keep is a ghost spire at levels 1 and 2, a broken lighthouse at level 3 and a horned skull tower with burning eyes at levels 4 and 5. Forts show their towers and treasure from the open sea.
 
 The Lantern Lines puzzle is now only the escape from Davy Jones' Locker: rotate mirror tiles on a 5×5 grid to carry one beam of lantern light from the lighthouse to every spirit totem. The server picks a new seed for every escape, and every generated puzzle has a solution.
 

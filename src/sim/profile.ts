@@ -16,6 +16,8 @@ export interface Weapons {
   readonly salt: number;
   readonly barrel: number;
   readonly bats: number;
+  /** The Pumpkin Mortar. Missing on captains saved before it existed, which means level 0. */
+  readonly mortar?: number;
 }
 
 export interface Report {
@@ -94,7 +96,7 @@ export function createProfile(id: string, name: string, tokenHash: string, now: 
     resources: { ...ECONOMY.start },
     homeLevel: 1,
     defenses: [{ type: 'cannonTower', level: 1, slot: 0 }],
-    weapons: { hull: 1, cannon: 1, salt: 1, barrel: 0, bats: 0 },
+    weapons: { hull: 1, cannon: 1, salt: 1, barrel: 0, bats: 0, mortar: 0 },
     crew: { gunner: { state: 'living', battlesLeft: 0 }, navigator: { state: 'living', battlesLeft: 0 } },
     captured: [],
     tributeAt: now,
@@ -126,6 +128,7 @@ export function loadoutOf(profile: Profile): Loadout {
     salt: profile.weapons.salt,
     barrel: profile.weapons.barrel,
     bats: profile.weapons.bats,
+    mortar: profile.weapons.mortar ?? 0,
     gunner: profile.crew.gunner.state,
     navigator: profile.crew.navigator.state,
   };

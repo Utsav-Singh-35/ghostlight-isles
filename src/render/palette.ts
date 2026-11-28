@@ -4,6 +4,7 @@ export const PALETTE = {
   horizon: '#0E2230',
   deepWater: '#082532',
   waveCrest: '#1C5560',
+  shallowWater: '#1E6466',
   moonlight: '#CFE3FF',
   lantern: '#FFB347',
   spectral: '#5CFFB0',

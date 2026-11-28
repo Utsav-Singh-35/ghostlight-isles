@@ -3,8 +3,9 @@ import { FORTS } from '../sim/balance';
 import { fortDifficulty } from '../sim/layout';
 import { createRng, type Rng } from '../sim/rng';
 import type { Island, World } from '../sim/world';
-import { addFort, blockedByFort, ghostSpireGeometry, keepScale } from './fortMeshes';
+import { addFort, blockedByFort, fortStyle, hauntedKeepGeometry, keepScale } from './fortMeshes';
 import { MeshBuilder, placed, vertexColorMaterial, type Vec3 } from './meshBuilder';
+import type { Shore } from './ocean';
 import { PALETTE } from './palette';
 
 export type GlowKind = 'lantern' | 'spectral';
@@ -39,6 +40,8 @@ export interface IslandScene {
   readonly lights: readonly LightAnchor[];
   /** Where each island's label floats, by island id. */
   readonly labelAnchors: readonly THREE.Vector3[];
+  /** Every island's shore, for surf on the sea. */
+  readonly shores: readonly Shore[];
   readonly drawCalls: number;
   /** Lights captured islands' lantern glass warm instead of green. */
   setCaptured(ids: ReadonlySet<number>): void;
@@ -62,8 +65,15 @@ interface Colors {
 const HOME_COLORS: Colors = { sand: PALETTE.homeSand, moss: PALETTE.homeMoss, rock: PALETTE.homeRock };
 const HAUNTED_COLORS: Colors = { sand: PALETTE.hauntedSand, moss: PALETTE.hauntedMoss, rock: PALETTE.hauntedRock };
 
-/** A jittered radial island: underwater skirt, beach, hill and peak, colored per face. */
-export function buildTerrain(island: Island, rng: Rng): { geometry: THREE.BufferGeometry; peak: number } {
+/** How far out an island's waterline lies, as a share of its radius, before its coast wobbles in and out. */
+export const WATERLINE = 0.94;
+
+/**
+ * A jittered radial island: underwater skirt, beach, hill and peak, colored per face. `coast` holds
+ * the phases of the coastline's wobble, `radius · (1 + 0.05 sin(2θ + c0) + 0.03 sin(3θ + c1) + 0.02 sin(5θ + c2))`,
+ * so the sea can draw surf along the real shore.
+ */
+export function buildTerrain(island: Island, rng: Rng): { geometry: THREE.BufferGeometry; peak: number; coast: readonly [number, number, number] } {
   const home = island.kind === 'home';
   const colors = home ? HOME_COLORS : HAUNTED_COLORS;
   const r = island.radius;
@@ -127,7 +137,7 @@ export function buildTerrain(island: Island, rng: Rng): { geometry: THREE.Buffer
   const apex: Vec3 = [rng.range(-0.5, 0.5), peak, rng.range(-0.5, 0.5)];
   for (let i = 0; i < segments; i++) face(top[i]!, top[(i + 1) % segments]!, apex);
 
-  return { geometry: b.build(), peak };
+  return { geometry: b.build(), peak, coast: [p1, p2, p3] };
 }
 
 // ---- Prop models, built once and shared by instanced meshes ----
@@ -285,20 +295,35 @@ export function createIslands(world: World): IslandScene {
   const wisps: WispSpec[] = [];
   const lights: LightAnchor[] = [];
   const labelAnchors: THREE.Vector3[] = [];
+  const shores: Shore[] = [];
   const disposables: Array<{ dispose(): void }> = [terrainMaterial, propMaterial, glassMaterial];
 
   const raycaster = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
   const origin = new THREE.Vector3();
   const terrains = new Map<number, THREE.Mesh>();
-  /** Every haunted fort and its spire, merged into one mesh. */
+  /** Every haunted fort and its keep, merged into one mesh. */
   const forts = new MeshBuilder();
-  const spire = ghostSpireGeometry();
+  /** Keep models by kind (spire, broken lighthouse, skull tower), built once and copied into each fort. */
+  const keeps = new Map<number, ReturnType<typeof hauntedKeepGeometry> & { readonly top: number }>();
+  const keepFor = (level: number) => {
+    const kind = level >= 4 ? 4 : level === 3 ? 3 : 1;
+    let keep = keeps.get(kind);
+    if (!keep) {
+      const model = hauntedKeepGeometry(kind);
+      model.body.computeBoundingBox();
+      keep = { ...model, top: model.body.boundingBox?.max.y ?? model.lanternHeight + 2 };
+      keeps.set(kind, keep);
+    }
+    return keep;
+  };
+  const homeIsland = world.islands.find((i) => i.kind === 'home');
 
   for (const island of world.islands) {
     const rng = createRng(island.seed);
     const home = island.kind === 'home';
-    const { geometry, peak } = buildTerrain(island, rng);
+    const { geometry, peak, coast } = buildTerrain(island, rng);
+    shores.push({ x: island.x, z: island.z, radius: island.radius, coast });
     const terrain = new THREE.Mesh(geometry, terrainMaterial);
     terrain.position.set(island.x, 0, island.z);
     terrain.name = `island-${island.id}`;
@@ -306,8 +331,8 @@ export function createIslands(world: World): IslandScene {
     group.add(terrain);
     terrains.set(island.id, terrain);
     disposables.push(geometry);
-    // Labels float above the lighthouse or the fort's ghost spire.
-    labelAnchors[island.id] = new THREE.Vector3(island.x, peak + (home ? 16 : 15), island.z);
+    // Labels float above the lighthouse; a fort's label is raised to clear its keep below.
+    labelAnchors[island.id] = new THREE.Vector3(island.x, peak + 16, island.z);
 
     /** Terrain height under a point given in polar form around the island's centre. */
     const ground = (angle: number, fraction: number): Vec3 | null => {
@@ -325,12 +350,13 @@ export function createIslands(world: World): IslandScene {
       const hit = raycaster.intersectObject(terrain, false)[0];
       return hit ? hit.point.y : 0.5;
     };
+    const style = home ? null : fortStyle(fortDifficulty(island), island.seed);
     const scatter = (count: number, min: number, max: number, into: Placement[], scale: () => number, tilt = 0) => {
       for (let i = 0; i < count; i++) {
         const angle = rng.range(0, Math.PI * 2);
         const fraction = rng.range(min, max);
         // Nothing grows through a haunted fort's walls.
-        const at = !home && blockedByFort(fraction * island.radius, island.radius) ? null : ground(angle, fraction);
+        const at = style && blockedByFort(fraction * island.radius, island.radius, style) ? null : ground(angle, fraction);
         if (!at) continue;
         into.push({
           position: [at[0], at[1] - 0.05, at[2]],
@@ -393,23 +419,40 @@ export function createIslands(world: World): IslandScene {
       addPost(-Math.PI * 0.6, 0.72, 'lantern');
     } else {
       scatter(rng.int(3, 7), 0.25, 0.75, deadTrees, () => rng.range(0.8, 1.4), 0.12);
-      // The fort: curtain walls around a ghost spire, bigger and taller the harder the fort.
+      // The fort: walls in a style of its own around a keep that grows more fearsome with the level.
       const level = fortDifficulty(island);
-      const flames = addFort(forts, island.radius, level, island.seed, heightAt, island);
+      const { flames } = addFort(forts, island.radius, level, island.seed, heightAt, island);
       const s = keepScale(FORTS.keepLevel[level - 1]!);
-      forts.addColored(spire.body, placed([island.x, peak - 0.6, island.z], [0, 0, 0], s));
-      const lampY = peak - 0.6 + spire.lanternHeight * s;
-      glass.push({ position: [island.x, lampY, island.z], rotation: [0, 0, 0], scale: [1.4 * s, 1.7 * s, 1.4 * s] });
-      glassColors.push(spectralColor);
-      glassIslands.push(island.id);
-      glows.push({ position: new THREE.Vector3(island.x, lampY, island.z), kind: 'spectral', size: 6, islandId: island.id });
+      const keep = keepFor(level);
+      const baseY = peak - 0.6;
+      // A skull tower stares at Last Light.
+      const yaw = keep.eyes.length > 0 && homeIsland ? Math.atan2(homeIsland.x - island.x, homeIsland.z - island.z) : 0;
+      forts.addColored(keep.body, placed([island.x, baseY, island.z], [0, yaw, 0], s));
+      labelAnchors[island.id] = new THREE.Vector3(island.x, baseY + keep.top * s + 3, island.z);
+      if (keep.eyes.length === 0) {
+        const lampY = baseY + keep.lanternHeight * s;
+        glass.push({ position: [island.x, lampY, island.z], rotation: [0, 0, 0], scale: [1.4 * s, 1.7 * s, 1.4 * s] });
+        glassColors.push(spectralColor);
+        glassIslands.push(island.id);
+        glows.push({ position: new THREE.Vector3(island.x, lampY, island.z), kind: 'spectral', size: 6, islandId: island.id });
+      } else {
+        const cos = Math.cos(yaw);
+        const sin = Math.sin(yaw);
+        for (const [ex, ey, ez] of keep.eyes) {
+          const eye: Vec3 = [island.x + (ex * cos + ez * sin) * s, baseY + ey * s, island.z + (ez * cos - ex * sin) * s];
+          glass.push({ position: eye, rotation: [0, yaw, 0], scale: [0.62 * s, 0.42 * s, 0.3 * s] });
+          glassColors.push(spectralColor);
+          glassIslands.push(island.id);
+          glows.push({ position: new THREE.Vector3(...eye), kind: 'spectral', size: 3.4, islandId: island.id });
+        }
+      }
       for (const f of flames) glows.push({ position: new THREE.Vector3(...f), kind: 'spectral', size: 2.2, islandId: island.id });
 
       // A small graveyard on one side of the island, outside the walls.
       const yard = rng.range(0, Math.PI * 2);
       for (let i = 0; i < rng.int(4, 9); i++) {
         const fraction = rng.range(0.3, 0.6);
-        const at = blockedByFort(fraction * island.radius, island.radius) ? null : ground(yard + rng.range(-0.5, 0.5), fraction);
+        const at = style && blockedByFort(fraction * island.radius, island.radius, style) ? null : ground(yard + rng.range(-0.5, 0.5), fraction);
         if (!at) continue;
         tombstones.push({
           position: [at[0], at[1] - 0.1, at[2]],
@@ -448,7 +491,7 @@ export function createIslands(world: World): IslandScene {
     group.add(instanced(geometry, propMaterial, placements));
     disposables.push(geometry);
   }
-  spire.body.dispose();
+  for (const keep of keeps.values()) keep.body.dispose();
   if (forts.triangleCount > 0) {
     const fortGeometry = forts.build();
     const fortMesh = new THREE.Mesh(fortGeometry, propMaterial);
@@ -469,6 +512,7 @@ export function createIslands(world: World): IslandScene {
     wisps,
     lights,
     labelAnchors,
+    shores,
     drawCalls,
     setCaptured(ids) {
       glassColors.forEach((original, i) => {

@@ -40,6 +40,8 @@ function partDetail(part: ShipPart, level: number): string {
       return `Burns ${WEAPONS.barrel.radius[i]} m around it for ${WEAPONS.barrel.burnSeconds} s. Press F in battle.`;
     case 'bats':
       return `Reveals ghosts and mines for ${WEAPONS.bats.revealSeconds[i]} s. Press B in battle.`;
+    case 'mortar':
+      return `Lobs a burning pumpkin ${WEAPONS.mortar.minRange} to ${WEAPONS.mortar.range} m: ${WEAPONS.mortar.damage[i]} damage across ${WEAPONS.mortar.splash[i]} m, every ${WEAPONS.mortar.cooldownSeconds} s. Press G in battle; it aims at your locked target.`;
   }
 }
 
@@ -229,7 +231,8 @@ export class BasePanel {
   }
 
   private partRow(profile: PublicProfile, part: ShipPart): HTMLElement {
-    const level = profile.weapons[part];
+    // Captains saved before a part existed don't have it yet.
+    const level = profile.weapons[part] ?? 0;
     const row = el('div', 'bp-slot');
     row.append(el('div', 'bp-slot-name', `${SHIP_PART_NAMES[part]}: ${level === 0 ? 'locked' : `level ${level} of 3`}`), el('p', 'bp-role', partDetail(part, level)));
     const cost = shipUpgradeCost(profile, part);

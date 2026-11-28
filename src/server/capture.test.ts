@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { FORTS, REWARDS } from '../sim/balance';
 import { FLAG, runBattle } from '../sim/battle';
+import { captureRewards } from '../sim/captureRewards';
 import { fortDifficulty } from '../sim/layout';
 import { STANDARD_WORLD } from './capture';
 import { autopilot } from './testAutopilot';
@@ -94,7 +95,11 @@ describe('island-capture spec: captures', () => {
     const right = await server.call('POST', '/captures/finish', { id: start.data.ticket.id, inputs }, token);
     expect(right.data.outcome.won).toBe(true);
     expect(right.data.profile.captured).toEqual([1]);
-    expect(right.data.profile.resources.gold).toBe(600 + REWARDS.captureGold[0]);
+    // The reward is the pure rules applied to the battle the server replayed.
+    const expected = captureRewards(runBattle(start.data.ticket.setup, inputs), 1);
+    expect(expected.gold).toBeGreaterThan(REWARDS.captureGold[0]);
+    expect(right.data.outcome.rewards.lines).toEqual(expected.lines);
+    expect(right.data.profile.resources.gold).toBe(600 + expected.gold);
     expect(right.data.profile.infamy).toBe(REWARDS.infamyPerCapture);
     expect(right.data.profile.reports[0].title).toBe(`${firstIsland.name} is yours`);
     const twice = await server.call('POST', '/captures/finish', { id: start.data.ticket.id, inputs }, token);

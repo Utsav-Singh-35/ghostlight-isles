@@ -69,7 +69,8 @@ The first playable slice of Ghostlight Isles: the player sails a small pirate sh
 **User Story:** As a player, I want a moody night sea, so that the game feels haunted from the first second.
 
 #### Acceptance Criteria
-1. THE Renderer SHALL draw an animated, faceted sea, a night sky with stars and a moon, and fog that hides islands beyond about 300 metres.
+1. THE Renderer SHALL draw an animated sea with smooth wave lighting, fine ripples that catch the moon and lanterns, a reflected night sky, foam on the highest crests and surf along island shores, plus a night sky with stars and a moon, and fog that hides islands beyond about 300 metres.
+6. THE Renderer SHALL light the sea with the same slopes the waves have, so the light on the water matches the waves the ship rides.
 2. THE Renderer SHALL float the ship on the same waves the player sees, with bobbing, pitching, rolling and leaning into turns, without changing the simulation.
 3. THE Renderer SHALL show lantern glows through the fog: warm (`#FFB347`) on the player's island and ship, spectral green (`#5CFFB0`) on haunted islands.
 4. THE Renderer SHALL show a foam wake behind the ship that grows with speed, and green ghost lights drifting over haunted islands.

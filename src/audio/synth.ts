@@ -206,6 +206,12 @@ export class Synth {
         this.noise(t, { filter: 'bandpass', from: 520, to: 300, q: 2, peak: 0.6, decay: 0.16 }, out);
         this.tone(t, { wave: 'triangle', from: 150, to: 70, peak: 0.4, decay: 0.22 }, out);
         break;
+      case 'mortar':
+        // A deep, hollow thump and the whistle of the shell going up.
+        this.noise(t, { filter: 'lowpass', from: 900, to: 60, q: 0.8, peak: 0.95, decay: 0.7 }, out);
+        this.tone(t, { wave: 'sine', from: 58, to: 30, peak: 1, decay: 0.45 }, out);
+        this.tone(t + 0.08, { wave: 'sine', from: 420, to: 900, peak: 0.08, attack: 0.05, decay: 0.9 }, { gain, pan, wet: 0.3 });
+        break;
       case 'barrel':
         this.noise(t, { filter: 'bandpass', from: 300, to: 1800, q: 1.2, peak: 0.45, attack: 0.08, decay: 0.45 }, out);
         break;

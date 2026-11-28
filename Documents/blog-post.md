@@ -33,7 +33,7 @@ The same server code runs in three places: as a Netlify Function that saves capt
 
 ## Spec first, with Kiro
 
-I built the game with Kiro, the AI IDE, and the most useful habit was writing each system down before any code. Every system, from sailing to the Locker, got a spec: requirements, a design with numbered "correctness properties", and tasks. Each property is a sentence like "a sunk ship can't capture, raid or fight a siege", and each one became a property-based test with the same number. The game has 64 of them.
+I built the game with Kiro, the AI IDE, and the most useful habit was writing each system down before any code. Every system, from sailing to the Locker, got a spec: requirements, a design with numbered "correctness properties", and tasks. Each property is a sentence like "a sunk ship can't capture, raid or fight a siege", and each one became a property-based test with the same number. The game has 70 of them.
 
 Property-based tests run a rule over hundreds of random inputs, and they found things I would never have written examples for. My favorite: the wave math returned exactly 2π instead of something just below it when the time was 5e-324 seconds, the smallest number a double can hold, because subtracting it from 2π rounds back to 2π. The test shrank its failure down to that one value, and it's now a regression test.
 
